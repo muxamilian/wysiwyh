@@ -17,6 +17,17 @@ from tensorflow.keras.callbacks import Callback
 img_size = 64
 batch_size = 64
 
+def get_triangle_distribution(half_size):
+  dist = [1]
+  step_size = 1/(half_size+1)
+  for i in range(half_size):
+    dist.append(1-(i+1)*step_size)
+  dist = list(reversed(dist[1:])) + dist
+  assert len(dist) == 2*half_size+1
+  s = sum(dist)
+  dist = [item/s for item in dist]
+  return dist
+
 from glob import glob
 
 x_files = glob('data/*.jpg')
@@ -65,8 +76,14 @@ loss_function = losses.MeanSquaredError()
 rmse_metric = tf.keras.metrics.RootMeanSquaredError()
 
 class Autoencoder(Model):
-  def __init__(self, code_dim):
+  def __init__(self, code_dim, smoothing_half_size):
     super(Autoencoder, self).__init__()
+
+    self.cdf = tf.cast(tf.linspace(0, 1, batch_size*code_dim+2)[1:-1], tf.float32)
+    self.code_dim = code_dim
+    self.smoothing_half_size = smoothing_half_size
+
+    self.smoothing_kernel = tf.constant(get_triangle_distribution(self.smoothing_half_size), dtype=tf.float32)[:,None,None]
 
     self.encoder = tf.keras.Sequential([
       layers.Input(shape=(img_size, img_size, 3)),
@@ -83,8 +100,7 @@ class Autoencoder(Model):
       layers.Flatten(),
       layers.Dense(256),
       layers.LeakyReLU(alpha=0.1),
-      layers.Dense(code_dim, activation=None),
-      layers.Activation('sigmoid')
+      layers.Dense(self.code_dim+2*self.smoothing_half_size, activation=None),
     ])
 
     self.decoder = tf.keras.Sequential([
@@ -106,9 +122,8 @@ class Autoencoder(Model):
       x_reconstructed, code = self(x, training=True)
       reconstruction_loss = loss_function(x, x_reconstructed)
       sorted = tf.sort(tf.reshape(code, (-1,)))
-      cdf = tf.cast(tf.linspace(0, 1, batch_size*code.shape[1]+2)[1:-1], tf.float32)
-      deviation_loss = 0.1*tf.reduce_mean((sorted-cdf)**2.)
-      loss = reconstruction_loss + deviation_loss
+      deviation_loss = 0.1*tf.reduce_mean((sorted-self.cdf)**2.)
+      loss = reconstruction_loss# + deviation_loss
 
     gradients = tape.gradient(loss, self.trainable_variables)
     self.optimizer.apply_gradients(zip(gradients, self.trainable_variables))
@@ -125,12 +140,17 @@ class Autoencoder(Model):
         return [total_loss_tracker, rec_loss_tracker, code_loss_metric, rmse_metric]
 
   def call(self, x):
-    encoded = self.encoder(x)
+    encoded_unsmoothed = self.encoder(x)[:,:,None]
+    
+    smoothed = tf.nn.conv1d(encoded_unsmoothed, self.smoothing_kernel, stride=1, padding="VALID")
+    smoothed = tf.reshape(smoothed, (batch_size, self.code_dim))
+    encoded = tf.sigmoid(smoothed)
+
     decoded = self.decoder(encoded)
     return decoded, encoded
 
-autoencoder = Autoencoder(100)
-autoencoder.compile(optimizer=optimizer)
+autoencoder = Autoencoder(100, 3)
+autoencoder.compile(optimizer=optimizer, run_eagerly=False)
 
 autoencoder.fit(training_data,
                 epochs=1000,
