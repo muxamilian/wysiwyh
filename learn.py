@@ -1,6 +1,5 @@
 import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
 import tensorflow as tf
 from datetime import datetime
 import math
@@ -55,6 +54,14 @@ with file_writer.as_default():
 # training_data = train_ds.map(lambda x: (x, x))
 training_data = train_ds.take(math.floor(len(raw_ds)/batch_size))
 
+def create_image_from_distribution(sequence, n_bins=100):
+  assert len(sequence.shape) == 1
+  output_image = np.zeros((n_bins, sequence.shape[-1], 3), dtype=np.float32)
+  for i in range(len(sequence)):
+    output_image[:int(np.floor(n_bins*sequence[i])), i, :] = 1.0
+
+  return output_image
+
 class CustomCallback(Callback):
 
     def on_epoch_end(self, epoch, logs=None):
@@ -62,7 +69,16 @@ class CustomCallback(Callback):
 
         with file_writer.as_default():
           tf.summary.image("Out imgs", out_imgs, step=epoch)
-          tf.summary.histogram("Out dists", out_codes, step=epoch)
+          tf.summary.histogram("Out overall dists", out_codes, step=epoch)
+          stacked_dist_images = np.stack([
+            create_image_from_distribution(out_codes[0,:].numpy()), 
+            create_image_from_distribution(out_codes[1,:].numpy()),
+            create_image_from_distribution(out_codes[2,:].numpy())])
+          tf.summary.image("Out dists", stacked_dist_images, step=epoch)
+
+          for key in logs:
+              tf.summary.scalar(key, logs[key], step=epoch)
+
 
 def log_normal_pdf(sample, mean, logvar, raxis=1):
   log2pi = tf.math.log(2. * np.pi)
@@ -149,8 +165,8 @@ class Autoencoder(Model):
     decoded = self.decoder(encoded)
     return decoded, encoded
 
-autoencoder = Autoencoder(100, 3)
-autoencoder.compile(optimizer=optimizer, run_eagerly=False)
+autoencoder = Autoencoder(100, 5)
+autoencoder.compile(optimizer=optimizer, run_eagerly=True)
 
 autoencoder.fit(training_data,
                 epochs=1000,
