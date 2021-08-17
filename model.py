@@ -1,6 +1,37 @@
+import numpy as np
 import tensorflow as tf
 from tensorflow.keras.models import Model
 from tensorflow.keras import layers, losses
+from tensorflow.keras.callbacks import Callback
+
+def create_image_from_distribution(sequence, n_bins=100):
+  assert len(sequence.shape) == 1
+  output_image = np.zeros((n_bins, sequence.shape[-1], 3), dtype=np.float32)
+  for i in range(len(sequence)):
+    output_image[:int(np.floor(n_bins*sequence[i])), i, :] = 1.0
+
+  return output_image
+
+class CustomCallback(Callback):
+
+  def __init__(self, file_writer, val_batch):
+    self.file_writer = file_writer
+    self.val_batch = val_batch
+
+  def on_epoch_end(self, epoch, logs=None):
+    out_imgs, out_codes = self.model(self.val_batch)
+
+    with self.file_writer.as_default():
+      tf.summary.image("Out imgs", out_imgs, step=epoch)
+      tf.summary.histogram("Out overall dists", out_codes, step=epoch)
+      stacked_dist_images = np.stack([
+        create_image_from_distribution(out_codes[0,:].numpy()), 
+        create_image_from_distribution(out_codes[1,:].numpy()),
+        create_image_from_distribution(out_codes[2,:].numpy())])
+      tf.summary.image("Out dists", stacked_dist_images, step=epoch)
+
+      for key in logs:
+        tf.summary.scalar(key, logs[key], step=epoch)
 
 def process_img(file_path, img_size):
     img = tf.io.read_file(file_path)
