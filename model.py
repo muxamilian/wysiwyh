@@ -19,7 +19,7 @@ class CustomCallback(Callback):
     self.val_batch = val_batch
 
   def on_epoch_end(self, epoch, logs=None):
-    out_imgs, out_codes = self.model(self.val_batch)
+    out_imgs, out_codes = self.model(self.val_batch, training=True)
 
     with self.file_writer.as_default():
       tf.summary.image("Out imgs", out_imgs, step=epoch)

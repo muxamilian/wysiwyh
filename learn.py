@@ -27,7 +27,7 @@ train = False
 
 optimizer = tf.keras.optimizers.Adam()
 
-autoencoder = Autoencoder(100, 5, batch_size, img_size)
+autoencoder = Autoencoder(100, 7, batch_size, img_size)
 autoencoder.compile(optimizer=optimizer, run_eagerly=True)
 
 def randomize_phase(absolute_values):
@@ -141,18 +141,9 @@ elif args.mode=="eval":
   play_audio(audio_stream)
 
 elif args.mode=="live":
-  autoencoder.load_weights('logs/20210818-181200/weights.1000-0.00864/variables/variables')
-
-  # video_fps = 60
+  # autoencoder.load_weights('logs/20210818-181200/weights.1000-0.00864/variables/variables')
+  autoencoder.load_weights('logs/20210820-215243/weights.1000-0.00876/variables/variables')
   fps = 10
-
-  # x_files = sorted(glob('data2/*.jpg'))
-  # x_files = [item for item in x_files if int(item.split('/image')[-1].split('.')[0])%(math.floor(video_fps/fps)) == 0]
-
-  # files_ds = tf.data.Dataset.from_tensor_slices(x_files)
-  # raw_ds = files_ds.map(lambda x: process_img(x, img_size)).cache()
-  # num_max_batches = math.floor(len(raw_ds)/batch_size)
-  # predict_ds = raw_ds.batch(batch_size).take(max(num_max_batches, 100))
 
   upper_limit_hz = 5000
   volume = 1
@@ -160,24 +151,24 @@ elif args.mode=="live":
   p = pyaudio.PyAudio()
     # for paFloat32 sample values must be in range [-1.0, 1.0]
   stream = p.open(format=pyaudio.paFloat32,
+                  frames_per_buffer=int(2*upper_limit_hz/fps),
                   channels=1,
-                  rate=10000,
+                  rate=2*upper_limit_hz,
                   output=True)
 
   cap = cv2.VideoCapture(0)
 
-  final_time_series = []
-  last_computation_duration = None
-
   i = -1
   while cap.isOpened():
       i += 1
+
       success, img = cap.read()
 
       if not success:
         continue
 
       start_time = time.time()
+
       img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
       img = img[0:720, 160:960, :]
       # plt.imshow(rgb_img),
@@ -193,21 +184,16 @@ elif args.mode=="live":
       current_code_filled_up = np.concatenate((np.zeros(1), current_code_repeated))
 
       time_series = np.fft.irfft(randomize_phase(current_code_filled_up)).astype(np.float32)
-      final_time_series.append(time_series)
+      audio_to_be_played = time_series.tobytes()
+      # final_time_series.append(time_series.tobytes())
 
-      current_time_series = final_time_series.pop(0)
+      current_time = time.time()
+      last_computation_duration = current_time - start_time
 
-      # audio_stream = volume*current_time_series
-      audio_stream = current_time_series
-
-      stream.write(audio_stream.tobytes())
-
-      last_computation_duration = time.time() - start_time
-
-      if len(current_time_series) == 0:
-        time.sleep(0.9*(1/fps) - last_computation_duration)
-      else:
-        time.sleep(0.1*(1/fps))
+      write_start = time.time()
+      stream.write(audio_to_be_played)
+      writing_time = time.time()-write_start
+      print("Writing time:", writing_time, "computation time:", last_computation_duration, "total:", writing_time+last_computation_duration)
 
   stream.stop_stream()
   stream.close()
