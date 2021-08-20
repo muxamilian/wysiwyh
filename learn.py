@@ -1,3 +1,4 @@
+from typing import final
 import numpy as np
 import tensorflow as tf
 from datetime import datetime
@@ -5,10 +6,18 @@ import math
 import os
 import pyaudio
 import matplotlib.pyplot as plt
-
-from model import Autoencoder, process_img, CustomCallback
-
+import cv2
+import time
+from model import Autoencoder, process_img, convert_to_tf, CustomCallback
 from glob import glob
+import argparse
+
+parser = argparse.ArgumentParser(description="Either train a model, evaluate an existing one on a dataset or run live.")
+parser.add_argument('--mode', type=str, default="live",
+                    help='"train", "eval" or "live"')
+
+args = parser.parse_args()
+print("Got these arguments:", args)
 
 img_size = 64
 batch_size = 64
@@ -19,13 +28,8 @@ optimizer = tf.keras.optimizers.Adam()
 autoencoder = Autoencoder(100, 5, batch_size, img_size)
 autoencoder.compile(optimizer=optimizer, run_eagerly=True)
 
-# def randomize_phase(absolute_value):
-#   absolute_value_squared = absolute_value**2
-#   real_part_squared = np.random.uniform(low=0, high=absolute_value_squared)
-#   imag_part_squared = absolute_value_squared - real_part_squared
-#   return np.sqrt(real_part_squared) + 1j * np.sqrt(imag_part_squared)
-
 def randomize_phase(absolute_values):
+  random_angles = np.random.uniform(low=0, high=np.array(2*np.pi).repeat(upper_limit_hz/fps+1))
   real_part = absolute_values * np.cos(random_angles)
   imag_part = absolute_values * np.sin(random_angles)
   complex_results = real_part + 1j * imag_part
@@ -48,7 +52,7 @@ def play_audio(audio_stream):
 
   p.terminate()
 
-if train:
+if args.mode=='train':
 
   x_files = sorted(glob('data2/*.jpg'))
   files_ds = tf.data.Dataset.from_tensor_slices(x_files)
@@ -75,24 +79,25 @@ if train:
                     )],
                   shuffle=False)
 
-else:
+elif args.mode=="eval":
   autoencoder.load_weights('logs/20210818-181200/weights.1000-0.00864/variables/variables')
 
   video_fps = 60
-  fps = 1
+  fps = 10
 
   x_files = sorted(glob('data2/*.jpg'))
-  x_files_at_fps = [item for item in x_files if int(item.split('/')[-1].split('.')[0])%(video_fps/fps) == 0]
-  
+  x_files = [item for item in x_files if int(item.split('/image')[-1].split('.')[0])%(math.floor(video_fps/fps)) == 0]
+
   files_ds = tf.data.Dataset.from_tensor_slices(x_files)
   raw_ds = files_ds.map(lambda x: process_img(x, img_size)).cache()
-  predict_ds = raw_ds.batch(batch_size)
+  num_max_batches = math.floor(len(raw_ds)/batch_size)
+  predict_ds = raw_ds.batch(batch_size).take(max(num_max_batches, 100))
 
   predicted_code = autoencoder.predict(predict_ds)
 
   upper_limit_hz = 5000
 
-  random_angles = np.random.uniform(low=0, high=np.array(2*np.pi).repeat(upper_limit_hz/fps+1))
+  # random_angles = np.random.uniform(low=0, high=np.array(2*np.pi).repeat(upper_limit_hz/fps+1))
 
   # current_batch = next(predict_ds.__iter__())
   # os.makedirs("figures", exist_ok=True)
@@ -132,5 +137,78 @@ else:
   audio_stream = volume*complete_time_series
 
   play_audio(audio_stream)
+
+elif args.mode=="live":
+  autoencoder.load_weights('logs/20210818-181200/weights.1000-0.00864/variables/variables')
+
+  # video_fps = 60
+  fps = 10
+
+  # x_files = sorted(glob('data2/*.jpg'))
+  # x_files = [item for item in x_files if int(item.split('/image')[-1].split('.')[0])%(math.floor(video_fps/fps)) == 0]
+
+  # files_ds = tf.data.Dataset.from_tensor_slices(x_files)
+  # raw_ds = files_ds.map(lambda x: process_img(x, img_size)).cache()
+  # num_max_batches = math.floor(len(raw_ds)/batch_size)
+  # predict_ds = raw_ds.batch(batch_size).take(max(num_max_batches, 100))
+
+  upper_limit_hz = 5000
+  volume = 1
+
+  p = pyaudio.PyAudio()
+    # for paFloat32 sample values must be in range [-1.0, 1.0]
+  stream = p.open(format=pyaudio.paFloat32,
+                  channels=1,
+                  rate=10000,
+                  output=True)
+
+  cap = cv2.VideoCapture(0)
+
+  final_time_series = []
+  last_computation_duration = None
+
+  while cap.isOpened():
+      success, img = cap.read()
+
+      if not success:
+        continue
+
+      start_time = time.time()
+      rgb_img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+      rgb_img = rgb_img[0:720, 160:960, :]
+
+      # plt.imshow(rgb_img),
+      # plt.show()
+
+      predict_ds = convert_to_tf(img, img_size)[None,:,:,:]
+
+      predicted_code = autoencoder.predict(predict_ds)
+
+      current_code = predicted_code[0,:].astype(np.float64)
+
+      current_code_repeated = current_code.repeat(int(math.floor(upper_limit_hz/current_code.shape[0]/fps)))
+      current_code_filled_up = np.concatenate((np.zeros(1), current_code_repeated))
+
+      time_series = np.fft.irfft(randomize_phase(current_code_filled_up)).astype(np.float32)
+      final_time_series.append(time_series)
+
+      last_computation_duration = time.time() - start_time
+      print("last_computation_duration", last_computation_duration)
+
+      current_time_series = final_time_series.pop(0)
+
+      audio_stream = volume*current_time_series
+
+      stream.write(audio_stream.tobytes())
+
+      if len(current_time_series) == 0:
+        time.sleep(0.75*(1/fps) - last_computation_duration)
+      else:
+        time.sleep(0.25*(1/fps))
+
+  stream.stop_stream()
+  stream.close()
+
+  p.terminate()
 
   pass

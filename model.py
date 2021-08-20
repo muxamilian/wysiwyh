@@ -33,12 +33,16 @@ class CustomCallback(Callback):
       for key in logs:
         tf.summary.scalar(key, logs[key], step=epoch)
 
+def convert_to_tf(img, img_size):
+  img = tf.image.convert_image_dtype(img, tf.float32)
+  img = tf.image.resize(img, size=(img_size, img_size))
+  return img
+
 def process_img(file_path, img_size):
-    img = tf.io.read_file(file_path)
-    img = tf.image.decode_jpeg(img, channels=3)
-    img = tf.image.convert_image_dtype(img, tf.float32)
-    img = tf.image.resize(img, size=(img_size, img_size))
-    return img
+  img = tf.io.read_file(file_path)
+  img = tf.image.decode_jpeg(img, channels=3)
+  img = convert_to_tf(img, img_size)
+  return img
 
 def get_triangle_distribution(half_size):
   dist = [1]
@@ -129,7 +133,7 @@ class Autoencoder(Model):
     encoded_unsmoothed = self.encoder(x)[:,:,None]
     
     smoothed = tf.nn.conv1d(encoded_unsmoothed, self.smoothing_kernel, stride=1, padding="VALID")
-    smoothed = tf.reshape(smoothed, (self.batch_size, self.code_dim))
+    smoothed = tf.reshape(smoothed, (-1, self.code_dim))
     encoded = tf.sigmoid(smoothed)
 
     if not training:
