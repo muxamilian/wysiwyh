@@ -125,12 +125,15 @@ class Autoencoder(Model):
     # def metrics(self):
     #     return [total_loss_tracker, rec_loss_tracker, code_loss_metric, rmse_metric]
 
-  def call(self, x):
+  def call(self, x, training=False):
     encoded_unsmoothed = self.encoder(x)[:,:,None]
     
     smoothed = tf.nn.conv1d(encoded_unsmoothed, self.smoothing_kernel, stride=1, padding="VALID")
     smoothed = tf.reshape(smoothed, (self.batch_size, self.code_dim))
     encoded = tf.sigmoid(smoothed)
+
+    if not training:
+      return encoded
 
     decoded = self.decoder(encoded)
     return decoded, encoded

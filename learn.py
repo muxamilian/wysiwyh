@@ -3,7 +3,8 @@ import tensorflow as tf
 from datetime import datetime
 import math
 import os
-import random
+import pyaudio
+import matplotlib.pyplot as plt
 
 from model import Autoencoder, process_img, CustomCallback
 
@@ -12,12 +13,6 @@ from glob import glob
 img_size = 64
 batch_size = 64
 train = False
-
-x_files = glob('data/*.jpg')
-
-files_ds = tf.data.Dataset.from_tensor_slices(x_files)
-
-raw_ds = files_ds.map(lambda x: process_img(x, img_size)).cache()
 
 optimizer = tf.keras.optimizers.Adam()
 
@@ -31,14 +26,33 @@ autoencoder.compile(optimizer=optimizer, run_eagerly=True)
 #   return np.sqrt(real_part_squared) + 1j * np.sqrt(imag_part_squared)
 
 def randomize_phase(absolute_values):
-  random_angles = np.random.uniform(low=0, high=np.array(2*np.pi).repeat(len(absolute_values)))
   real_part = absolute_values * np.cos(random_angles)
   imag_part = absolute_values * np.sin(random_angles)
   complex_results = real_part + 1j * imag_part
   assert np.isclose(np.abs(complex_results), absolute_values).all()
   return complex_results
 
+def play_audio(audio_stream):
+  p = pyaudio.PyAudio()
+    # for paFloat32 sample values must be in range [-1.0, 1.0]
+  stream = p.open(format=pyaudio.paFloat32,
+                  channels=1,
+                  rate=10000,
+                  output=True)
+
+  # play. May repeat with different volume values (if done interactively) 
+  stream.write(audio_stream.tobytes())
+
+  stream.stop_stream()
+  stream.close()
+
+  p.terminate()
+
 if train:
+
+  x_files = sorted(glob('data2/*.jpg'))
+  files_ds = tf.data.Dataset.from_tensor_slices(x_files)
+  raw_ds = files_ds.map(lambda x: process_img(x, img_size)).cache()
 
   train_ds = raw_ds.shuffle(10000,reshuffle_each_iteration=True).batch(batch_size)
   training_data = train_ds.take(math.floor(len(raw_ds)/batch_size))
@@ -62,18 +76,61 @@ if train:
                   shuffle=False)
 
 else:
-  autoencoder.load_weights('logs/20210815-014755/weights.1000-0.00602/variables/variables')
-  predict_ds = raw_ds.batch(batch_size).take(1)
-  _, predicted_code = autoencoder.predict(predict_ds)
+  autoencoder.load_weights('logs/20210818-181200/weights.1000-0.00864/variables/variables')
 
-  first_code = predicted_code[0,:].astype(np.float64)
-  # first_code /= len(first_code)
-  first_code = np.concatenate(([0,0], first_code))
-  reps = 49
-  first_code = first_code.repeat(reps)
-  first_code = np.concatenate((np.zeros(5000-len(first_code)+1), first_code))
-  # first_code /= reps
+  video_fps = 60
+  fps = 1
 
-  time_series = np.fft.irfft(randomize_phase(first_code))
+  x_files = sorted(glob('data2/*.jpg'))
+  x_files_at_fps = [item for item in x_files if int(item.split('/')[-1].split('.')[0])%(video_fps/fps) == 0]
+  
+  files_ds = tf.data.Dataset.from_tensor_slices(x_files)
+  raw_ds = files_ds.map(lambda x: process_img(x, img_size)).cache()
+  predict_ds = raw_ds.batch(batch_size)
+
+  predicted_code = autoencoder.predict(predict_ds)
+
+  upper_limit_hz = 5000
+
+  random_angles = np.random.uniform(low=0, high=np.array(2*np.pi).repeat(upper_limit_hz/fps+1))
+
+  # current_batch = next(predict_ds.__iter__())
+  # os.makedirs("figures", exist_ok=True)
+  # for i in range(current_batch.shape[0]):
+  #   plt.close()
+  #   plt.imshow(current_batch[i,...])
+  #   plt.savefig(f"figures/img_{i}.png")
+
+  final_time_series = []
+  for i in range(predicted_code.shape[0]):
+    current_code = predicted_code[i,:].astype(np.float64)
+    # plt.close()
+    # plt.plot(current_code)
+    # plt.savefig(f"figures/code_{i}.pdf")
+
+    current_code_repeated = current_code.repeat(int(math.floor(upper_limit_hz/current_code.shape[0]/fps)))
+    current_code_filled_up = np.concatenate((np.zeros(1), current_code_repeated))
+
+    # plt.close()
+    # plt.plot(current_code_filled_up)
+    # plt.savefig(f"figures/psd_{i}.pdf")
+    time_series = np.fft.irfft(randomize_phase(current_code_filled_up)).astype(np.float32)
+    # plt.close()
+    # plt.plot(time_series)
+    # plt.savefig(f"figures/time_series_{i}.pdf")
+    final_time_series.append(time_series)
+
+  complete_time_series = np.concatenate((*final_time_series,))
+  first_five_time_series = np.concatenate((*final_time_series[:5],))
+  # plt.close()
+  # plt.plot(complete_time_series)
+  # plt.savefig("figures/complete_time_series.pdf")
+  # plt.close()
+  # plt.plot(first_five_time_series)
+  # plt.savefig("figures/first_five_time_series.pdf")
+  volume = 1
+  audio_stream = volume*complete_time_series
+
+  play_audio(audio_stream)
 
   pass
