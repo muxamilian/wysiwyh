@@ -194,6 +194,7 @@ elif args.mode=="live":
       stream.write(audio_to_be_played)
       writing_time = time.time()-write_start
       print("Writing time:", writing_time, "computation time:", last_computation_duration, "total:", writing_time+last_computation_duration)
+      time.sleep(max(1/fps - 2*last_computation_duration, 0))
 
   stream.stop_stream()
   stream.close()
