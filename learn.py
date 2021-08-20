@@ -12,6 +12,8 @@ from model import Autoencoder, process_img, convert_to_tf, CustomCallback
 from glob import glob
 import argparse
 
+os.makedirs("figures", exist_ok=True)
+
 parser = argparse.ArgumentParser(description="Either train a model, evaluate an existing one on a dataset or run live.")
 parser.add_argument('--mode', type=str, default="live",
                     help='"train", "eval" or "live"')
@@ -167,16 +169,17 @@ elif args.mode=="live":
   final_time_series = []
   last_computation_duration = None
 
+  i = -1
   while cap.isOpened():
+      i += 1
       success, img = cap.read()
 
       if not success:
         continue
 
       start_time = time.time()
-      rgb_img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-      rgb_img = rgb_img[0:720, 160:960, :]
-
+      img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+      img = img[0:720, 160:960, :]
       # plt.imshow(rgb_img),
       # plt.show()
 
@@ -192,19 +195,19 @@ elif args.mode=="live":
       time_series = np.fft.irfft(randomize_phase(current_code_filled_up)).astype(np.float32)
       final_time_series.append(time_series)
 
-      last_computation_duration = time.time() - start_time
-      print("last_computation_duration", last_computation_duration)
-
       current_time_series = final_time_series.pop(0)
 
-      audio_stream = volume*current_time_series
+      # audio_stream = volume*current_time_series
+      audio_stream = current_time_series
 
       stream.write(audio_stream.tobytes())
 
+      last_computation_duration = time.time() - start_time
+
       if len(current_time_series) == 0:
-        time.sleep(0.75*(1/fps) - last_computation_duration)
+        time.sleep(0.9*(1/fps) - last_computation_duration)
       else:
-        time.sleep(0.25*(1/fps))
+        time.sleep(0.1*(1/fps))
 
   stream.stop_stream()
   stream.close()
