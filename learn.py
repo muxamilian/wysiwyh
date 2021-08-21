@@ -212,6 +212,7 @@ if __name__=="__main__":
     plotting_process.start()
 
     i = -1
+    last_computation_end_time = None
     while cap.isOpened():
         i += 1
 
@@ -238,16 +239,17 @@ if __name__=="__main__":
 
         time_series = np.fft.irfft(randomize_phase(current_code_filled_up)).astype(np.float32)
         audio_to_be_played = time_series.tobytes()
-        # final_time_series.append(time_series.tobytes())
 
-        current_time = time.time()
-        last_computation_duration = current_time - start_time
-
-        write_start = time.time()
-        stream.write(audio_to_be_played)
-        writing_time = time.time()-write_start
-        print("Writing time:", writing_time, "computation time:", last_computation_duration, "total:", writing_time+last_computation_duration)
         plotting_queue.put((img, current_code.astype(np.float32)))
+
+        computation_end_time = time.time()
+        last_computation_duration = computation_end_time - start_time
+
+        total_diff = computation_end_time - last_computation_end_time if last_computation_end_time is not None else 0
+        last_computation_end_time = computation_end_time
+        stream.write(audio_to_be_played)
+        writing_time = time.time()-computation_end_time
+        print("Writing time:", writing_time, "computation time:", last_computation_duration, "total active time:", writing_time+last_computation_duration, 'total time:', total_diff)
         time.sleep(max(1/fps - 2*last_computation_duration, 0))
 
     stream.stop_stream()
