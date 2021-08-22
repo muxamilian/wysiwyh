@@ -32,22 +32,31 @@ def plotting_function(q):
         quit()
 
     img = elem[0]
+    out_img = np.clip(elem[2], 0, 1)
     code = elem[1]
     if first_time:
-      fig, axs = plt.subplots(2,1)
+      fig, axs = plt.subplots(ncols=2,nrows=2)
+      gs = axs[1, 0].get_gridspec()
+      # remove the underlying axes
+      for ax in axs[1, :]:
+          ax.remove()
+      code_ax = fig.add_subplot(gs[1, :])
       plt.subplots_adjust(top=1, bottom=0, right=1, left=0, hspace=0, wspace=0);  
       plt.margins(0, 0)
-      ax = axs[0]
+      ax = axs[0,0]
       ax.axis('off')
       ax.set_adjustable('datalim')
       im = ax.imshow(img)
-      code_ax = axs[1]
+      ax_out = axs[0,1]
+      ax_out.axis('off')
+      ax_out.set_adjustable('datalim')
+      im_out = ax_out.imshow(out_img)
       code_ax.axis('off')
       code_ax.plot(code)
       first_time = False
     else:
       im.set_data(img)
-      code_ax = axs[1]
+      im_out.set_data(out_img)
       code_ax.clear()
       code_ax.axis('off')
       code_ax.plot(code)
@@ -224,15 +233,19 @@ if __name__=="__main__":
         start_time = time.time()
 
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        img = img[0:720, 160:960, :]
+        img = img[0:720, 160:1120, :]
         # plt.imshow(rgb_img),
         # plt.show()
 
-        predict_ds = convert_to_tf(img, img_size)[None,:,:,:]
+        converted_img = convert_to_tf(img, img_size)
+        predict_ds = converted_img[None,:,:,:]
 
-        predicted_code = autoencoder.predict(predict_ds)
+        output_img, predicted_code = autoencoder(predict_ds, training=True)
+        # print("input min", tf.reduce_min(converted_img), "max", tf.reduce_max(converted_img))
+        # print("output min", tf.reduce_min(output_img), "max", tf.reduce_max(output_img))
 
-        current_code = predicted_code[0,:].astype(np.float64)
+        current_code = predicted_code[0,:].numpy().astype(np.float64)
+        output_img = output_img[0,...].numpy()
 
         current_code_repeated = current_code.repeat(int(math.floor(upper_limit_hz/current_code.shape[0]/fps)))
         current_code_filled_up = np.concatenate((np.zeros(1), current_code_repeated))
@@ -240,7 +253,7 @@ if __name__=="__main__":
         time_series = np.fft.irfft(randomize_phase(current_code_filled_up)).astype(np.float32)
         audio_to_be_played = time_series.tobytes()
 
-        plotting_queue.put((img, current_code.astype(np.float32)))
+        plotting_queue.put((converted_img, current_code, output_img))
 
         computation_end_time = time.time()
         last_computation_duration = computation_end_time - start_time
@@ -250,7 +263,8 @@ if __name__=="__main__":
         stream.write(audio_to_be_played)
         writing_time = time.time()-computation_end_time
         print("Writing time:", writing_time, "computation time:", last_computation_duration, "total active time:", writing_time+last_computation_duration, 'total time:', total_diff)
-        time.sleep(max(1/fps - 2*last_computation_duration, 0))
+        # time.sleep(max(1/fps - 2*(last_computation_duration+writing_time), 0))
+        time.sleep(max(0.5/fps, 0))
 
     stream.stop_stream()
     stream.close()
