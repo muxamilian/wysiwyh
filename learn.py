@@ -1,9 +1,7 @@
 import numpy as np
 from datetime import datetime
-import math
 import os
 import matplotlib.pyplot as plt
-import cv2
 import time
 from glob import glob
 import argparse
@@ -63,17 +61,24 @@ def plotting_function(q):
       plt.pause(0.01)
 
 if __name__=="__main__":
+  import math
   import tensorflow as tf
+  import cv2
   from model import Autoencoder, process_img, convert_to_tf, CustomCallback
   import pyaudio
 
   img_size = 64
   batch_size = 64
+  n_steps = 500000
   train = False
 
+  # schedule = tf.keras.optimizers.schedules.CosineDecay(1.0, n_steps)
   optimizer = tf.keras.optimizers.Adam()
+  # optimizer = tf.keras.optimizers.SGD(learning_rate=schedule)
+  # optimizer = tf.keras.optimizers.SGD(learning_rate=1)
 
-  autoencoder = Autoencoder(100, 7, batch_size, img_size)
+  # autoencoder = Autoencoder(100, 7, batch_size, img_size)
+  autoencoder = Autoencoder(100, 5, batch_size, img_size)
   autoencoder.compile(optimizer=optimizer, run_eagerly=True)
 
   def randomize_phase(absolute_values):
@@ -84,23 +89,24 @@ if __name__=="__main__":
     assert np.isclose(np.abs(complex_results), absolute_values).all()
     return complex_results
 
-  os.makedirs("figures", exist_ok=True)
+  # os.makedirs("figures", exist_ok=True)
 
   parser = argparse.ArgumentParser(description="Either train a model, evaluate an existing one on a dataset or run live.")
-  parser.add_argument('--mode', type=str, default="live",
-                      help='"train", "eval" or "live"')
+  parser.add_argument('--mode', type=str, default="train", help='"train" or "live"')
+  parser.add_argument('--video_source', type=str, default="0", help='"0" for internal camera or URL or path to video file.')
 
   args = parser.parse_args()
   print("Got these arguments:", args)
 
   if args.mode=='train':
 
-    x_files = sorted(glob('data2/*.jpg'))
+    x_files = sorted(glob('data4/*.jpg'))
     files_ds = tf.data.Dataset.from_tensor_slices(x_files)
     raw_ds = files_ds.map(lambda x: process_img(x, img_size)).cache()
 
     train_ds = raw_ds.shuffle(10000,reshuffle_each_iteration=True).batch(batch_size)
     training_data = train_ds.take(math.floor(len(raw_ds)/batch_size))
+    batches_per_epoch = len(training_data)
     val_ds = raw_ds.shuffle(10000,reshuffle_each_iteration=False, seed=0).take(batch_size).batch(batch_size)
     val_batch = next(iter(val_ds))
 
@@ -110,96 +116,24 @@ if __name__=="__main__":
     with file_writer.as_default():
       tf.summary.image("In imgs", val_batch, step=0)
 
+    epochs_to_train = int(n_steps/batches_per_epoch)
+
     autoencoder.fit(training_data,
-                    epochs=1000,
+                    epochs=epochs_to_train,
                     callbacks=[
                       CustomCallback(file_writer, val_batch), 
                       tf.keras.callbacks.ModelCheckpoint(
                         os.path.join(logdir, "weights.{epoch:02d}-{total_loss:.5f}"), monitor='total_loss', verbose=1, save_best_only=False,
-                        save_weights_only=False, mode='min', save_freq=1000
+                        save_weights_only=False, mode='min', save_freq=int(n_steps/100)
                       )],
                     shuffle=False)
 
-  elif args.mode=="eval":
-
-    def play_audio(audio_stream):
-      p = pyaudio.PyAudio()
-        # for paFloat32 sample values must be in range [-1.0, 1.0]
-      stream = p.open(format=pyaudio.paFloat32,
-                      channels=1,
-                      rate=10000,
-                      output=True)
-
-      # play. May repeat with different volume values (if done interactively) 
-      stream.write(audio_stream.tobytes())
-
-      stream.stop_stream()
-      stream.close()
-
-      p.terminate()
-
-    autoencoder.load_weights('logs/20210818-181200/weights.1000-0.00864/variables/variables')
-
-    video_fps = 60
-    fps = 10
-
-    x_files = sorted(glob('data2/*.jpg'))
-    x_files = [item for item in x_files if int(item.split('/image')[-1].split('.')[0])%(math.floor(video_fps/fps)) == 0]
-
-    files_ds = tf.data.Dataset.from_tensor_slices(x_files)
-    raw_ds = files_ds.map(lambda x: process_img(x, img_size)).cache()
-    num_max_batches = math.floor(len(raw_ds)/batch_size)
-    predict_ds = raw_ds.batch(batch_size).take(max(num_max_batches, 100))
-
-    predicted_code = autoencoder.predict(predict_ds)
-
-    upper_limit_hz = 5000
-
-    # random_angles = np.random.uniform(low=0, high=np.array(2*np.pi).repeat(upper_limit_hz/fps+1))
-
-    # current_batch = next(predict_ds.__iter__())
-    # os.makedirs("figures", exist_ok=True)
-    # for i in range(current_batch.shape[0]):
-    #   plt.close()
-    #   plt.imshow(current_batch[i,...])
-    #   plt.savefig(f"figures/img_{i}.png")
-
-    
-    final_time_series = []
-    for i in range(predicted_code.shape[0]):
-      current_code = predicted_code[i,:].astype(np.float64)
-      # plt.close()
-      # plt.plot(current_code)
-      # plt.savefig(f"figures/code_{i}.pdf")
-
-      current_code_repeated = current_code.repeat(int(math.floor(upper_limit_hz/current_code.shape[0]/fps)))
-      current_code_filled_up = np.concatenate((np.zeros(1), current_code_repeated))
-
-      # plt.close()
-      # plt.plot(current_code_filled_up)
-      # plt.savefig(f"figures/psd_{i}.pdf")
-      time_series = np.fft.irfft(randomize_phase(current_code_filled_up)).astype(np.float32)
-      # plt.close()
-      # plt.plot(time_series)
-      # plt.savefig(f"figures/time_series_{i}.pdf")
-      final_time_series.append(time_series)
-
-    complete_time_series = np.concatenate((*final_time_series,))
-    first_five_time_series = np.concatenate((*final_time_series[:5],))
-    # plt.close()
-    # plt.plot(complete_time_series)
-    # plt.savefig("figures/complete_time_series.pdf")
-    # plt.close()
-    # plt.plot(first_five_time_series)
-    # plt.savefig("figures/first_five_time_series.pdf")
-    volume = 1
-    audio_stream = volume*complete_time_series
-
-    play_audio(audio_stream)
-
   elif args.mode=="live":
     # autoencoder.load_weights('logs/20210818-181200/weights.1000-0.00864/variables/variables')
-    autoencoder.load_weights('logs/20210820-215243/weights.1000-0.00876/variables/variables')
+    # autoencoder.load_weights('logs/20210820-215243/weights.1000-0.00876/variables/variables')
+    # autoencoder.load_weights('logs/20210823-221256/weights.1000-0.00630/variables/variables')
+    autoencoder.load_weights('logs/20210825-211156/weights.8570-0.00555/variables/variables')
+    # autoencoder.load_weights('logs/20210827-233952/weights.351-0.00284/variables/variables')
 
     fps = 10
     upper_limit_hz = 5000
@@ -213,36 +147,37 @@ if __name__=="__main__":
                     rate=2*upper_limit_hz,
                     output=True)
 
-    cap = cv2.VideoCapture(0)
+    video_source = args.video_source
+    try: 
+      video_source = int(args.video_source)
+    except ValueError:
+      pass
+    cap = cv2.VideoCapture(video_source)
 
     plotting_queue = multiprocessing.Queue()
 
     plotting_process = multiprocessing.Process(target=plotting_function, args=(plotting_queue,))
     plotting_process.start()
 
-    i = -1
     last_computation_end_time = None
-    while cap.isOpened():
-        i += 1
 
+    while cap.isOpened():
+
+        start_time = time.time()
         success, img = cap.read()
 
         if not success:
           continue
 
-        start_time = time.time()
-
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        img = img[0:720, 160:1120, :]
-        # plt.imshow(rgb_img),
-        # plt.show()
+        # img = img[0:720, 240:1120, :]
+        img = img[:, 240:1680, :]
+
 
         converted_img = convert_to_tf(img, img_size)
         predict_ds = converted_img[None,:,:,:]
 
         output_img, predicted_code = autoencoder(predict_ds, training=True)
-        # print("input min", tf.reduce_min(converted_img), "max", tf.reduce_max(converted_img))
-        # print("output min", tf.reduce_min(output_img), "max", tf.reduce_max(output_img))
 
         current_code = predicted_code[0,:].numpy().astype(np.float64)
         output_img = output_img[0,...].numpy()
@@ -253,7 +188,7 @@ if __name__=="__main__":
         time_series = np.fft.irfft(randomize_phase(current_code_filled_up)).astype(np.float32)
         audio_to_be_played = time_series.tobytes()
 
-        plotting_queue.put((converted_img, current_code, output_img))
+        plotting_queue.put((converted_img.numpy(), current_code, output_img))
 
         computation_end_time = time.time()
         last_computation_duration = computation_end_time - start_time
@@ -264,7 +199,8 @@ if __name__=="__main__":
         writing_time = time.time()-computation_end_time
         print("Writing time:", writing_time, "computation time:", last_computation_duration, "total active time:", writing_time+last_computation_duration, 'total time:', total_diff)
         # time.sleep(max(1/fps - 2*(last_computation_duration+writing_time), 0))
-        time.sleep(max(0.5/fps, 0))
+        # Hope that computation doesn't last longer than half a frame. This supposedly reduces delay. 
+        # time.sleep(max(0.5/fps, 0))
 
     stream.stop_stream()
     stream.close()
