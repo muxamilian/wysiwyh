@@ -77,8 +77,8 @@ if __name__=="__main__":
   # optimizer = tf.keras.optimizers.SGD(learning_rate=schedule)
   # optimizer = tf.keras.optimizers.SGD(learning_rate=1)
 
-  # autoencoder = Autoencoder(100, 7, batch_size, img_size)
-  autoencoder = Autoencoder(100, 5, batch_size, img_size)
+  autoencoder = Autoencoder(100, 7, batch_size, img_size)
+  # autoencoder = Autoencoder(100, 5, batch_size, img_size)
   autoencoder.compile(optimizer=optimizer, run_eagerly=True)
 
   def randomize_phase(absolute_values):
@@ -130,9 +130,9 @@ if __name__=="__main__":
 
   elif args.mode=="live":
     # autoencoder.load_weights('logs/20210818-181200/weights.1000-0.00864/variables/variables')
-    # autoencoder.load_weights('logs/20210820-215243/weights.1000-0.00876/variables/variables')
+    autoencoder.load_weights('logs/20210820-215243/weights.1000-0.00876/variables/variables')
     # autoencoder.load_weights('logs/20210823-221256/weights.1000-0.00630/variables/variables')
-    autoencoder.load_weights('logs/20210825-211156/weights.8570-0.00555/variables/variables')
+    # autoencoder.load_weights('logs/20210825-211156/weights.8570-0.00555/variables/variables')
     # autoencoder.load_weights('logs/20210827-233952/weights.351-0.00284/variables/variables')
 
     fps = 10
@@ -148,11 +148,15 @@ if __name__=="__main__":
                     output=True)
 
     video_source = args.video_source
+    is_file = True
     try: 
       video_source = int(args.video_source)
+      is_file = False
     except ValueError:
       pass
     cap = cv2.VideoCapture(video_source)
+
+    print("is_file", is_file)
 
     plotting_queue = multiprocessing.Queue()
 
@@ -170,8 +174,12 @@ if __name__=="__main__":
           continue
 
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        # img = img[0:720, 240:1120, :]
-        img = img[:, 240:1680, :]
+
+        new_width = int(4/3*img.shape[0])
+        offset = int((img.shape[1]-new_width)/2)
+
+        img = img[:, offset:offset+new_width, :]
+        assert img.shape[1]/img.shape[0]*3 == 4, f'{img.shape}'
 
 
         converted_img = convert_to_tf(img, img_size)
