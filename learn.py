@@ -1,71 +1,18 @@
-import numpy as np
-from datetime import datetime
-import os
-import matplotlib.pyplot as plt
-import time
-from glob import glob
-import argparse
-import queue
-import multiprocessing
-
-def plotting_function(q):
-
-  first_time = True
-
-  while True:
-    elem = None
-    while True:
-      try:
-        elem = q.get_nowait()
-        # print("Got item from queue, was already inside")
-      except queue.Empty:
-        break
-    # print("img", img)
-    if elem is None:
-      try:
-        elem = q.get(timeout=1)
-        # print("Got item after waiting")
-      except queue.Empty:
-        print("Plotting queue empty, exiting plotting_thread")
-        quit()
-
-    img = elem[0]
-    out_img = np.clip(elem[2], 0, 1)
-    code = elem[1]
-    if first_time:
-      fig, axs = plt.subplots(ncols=2,nrows=2)
-      gs = axs[1, 0].get_gridspec()
-      # remove the underlying axes
-      for ax in axs[1, :]:
-          ax.remove()
-      code_ax = fig.add_subplot(gs[1, :])
-      plt.subplots_adjust(top=1, bottom=0, right=1, left=0, hspace=0, wspace=0);  
-      plt.margins(0, 0)
-      ax = axs[0,0]
-      ax.axis('off')
-      ax.set_adjustable('datalim')
-      im = ax.imshow(img)
-      ax_out = axs[0,1]
-      ax_out.axis('off')
-      ax_out.set_adjustable('datalim')
-      im_out = ax_out.imshow(out_img)
-      code_ax.axis('off')
-      code_ax.plot(code)
-      first_time = False
-    else:
-      im.set_data(img)
-      im_out.set_data(out_img)
-      code_ax.clear()
-      code_ax.axis('off')
-      code_ax.plot(code)
-      plt.pause(0.01)
-
 if __name__=="__main__":
+  import numpy as np
+  import sys
+  from datetime import datetime
+  import os
+  import time
+  from glob import glob
+  import argparse
+  import multiprocessing
   import math
   import tensorflow as tf
   import cv2
   from model import Autoencoder, process_img, convert_to_tf, CustomCallback
   import pyaudio
+  import plotting
 
   img_size = 64
   batch_size = 64
@@ -160,7 +107,7 @@ if __name__=="__main__":
 
     plotting_queue = multiprocessing.Queue()
 
-    plotting_process = multiprocessing.Process(target=plotting_function, args=(plotting_queue,))
+    plotting_process = multiprocessing.Process(target=plotting.plotting_function, args=(plotting_queue,))
     plotting_process.start()
 
     last_computation_end_time = None
@@ -204,8 +151,9 @@ if __name__=="__main__":
         last_computation_end_time = computation_end_time
         stream.write(audio_to_be_played)
         writing_time = time.time()-computation_end_time
-        print("Writing time:", writing_time, "computation time:", last_computation_duration, "total active time:", writing_time+last_computation_duration, 'total time:', total_diff)
-        time.sleep(max(1/fps - 2*(last_computation_duration+writing_time), 0))
+        print(f"Fraction of allotted time: {(last_computation_duration)/(1/fps):.3f}, writing time: {writing_time:.3f}, computation time: {last_computation_duration:.3f}, total active time: {writing_time+last_computation_duration:.3f}, total time: {total_diff:.3f}", end="\r")
+        sys.stdout.flush()
+        # time.sleep(max(1/fps - 2*(last_computation_duration+writing_time), 0))
         # Hope that computation doesn't last longer than half a frame. This supposedly reduces delay. 
         # time.sleep(max(0.5/fps, 0))
 
