@@ -181,7 +181,6 @@ if __name__=="__main__":
         img = img[:, offset:offset+new_width, :]
         assert img.shape[1]/img.shape[0]*3 == 4, f'{img.shape}'
 
-
         converted_img = convert_to_tf(img, img_size)
         predict_ds = converted_img[None,:,:,:]
 
@@ -206,7 +205,7 @@ if __name__=="__main__":
         stream.write(audio_to_be_played)
         writing_time = time.time()-computation_end_time
         print("Writing time:", writing_time, "computation time:", last_computation_duration, "total active time:", writing_time+last_computation_duration, 'total time:', total_diff)
-        # time.sleep(max(1/fps - 2*(last_computation_duration+writing_time), 0))
+        time.sleep(max(1/fps - 2*(last_computation_duration+writing_time), 0))
         # Hope that computation doesn't last longer than half a frame. This supposedly reduces delay. 
         # time.sleep(max(0.5/fps, 0))
 
