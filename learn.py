@@ -9,6 +9,7 @@ if __name__=="__main__":
   import multiprocessing
   import math
   import tensorflow as tf
+  tf.config.experimental.set_visible_devices([], 'GPU')
   import cv2
   from model import Autoencoder, process_img, convert_to_tf, CustomCallback
   import pyaudio
@@ -47,14 +48,14 @@ if __name__=="__main__":
 
   if args.mode=='train':
 
-    x_files = sorted(glob('data4/*.jpg'))
+    x_files = sorted(glob('data5/*.jpg'))
     files_ds = tf.data.Dataset.from_tensor_slices(x_files)
     raw_ds = files_ds.map(lambda x: process_img(x, img_size)).cache()
 
-    train_ds = raw_ds.shuffle(10000,reshuffle_each_iteration=True).batch(batch_size)
+    train_ds = raw_ds.shuffle(100000,reshuffle_each_iteration=True).batch(batch_size)
     training_data = train_ds.take(math.floor(len(raw_ds)/batch_size))
     batches_per_epoch = len(training_data)
-    val_ds = raw_ds.shuffle(10000,reshuffle_each_iteration=False, seed=0).take(batch_size).batch(batch_size)
+    val_ds = raw_ds.shuffle(100000,reshuffle_each_iteration=False, seed=0).take(batch_size).batch(batch_size)
     val_batch = next(iter(val_ds))
 
     logdir = "logs/" + datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -76,11 +77,15 @@ if __name__=="__main__":
                     shuffle=False)
 
   elif args.mode=="live":
+    # Apparently the GPU is slower when the batch size is only 1
+    tf.config.experimental.set_visible_devices([], 'GPU')
+
     # autoencoder.load_weights('logs/20210818-181200/weights.1000-0.00864/variables/variables')
-    autoencoder.load_weights('logs/20210820-215243/weights.1000-0.00876/variables/variables')
+    # autoencoder.load_weights('logs/20210820-215243/weights.1000-0.00876/variables/variables')
     # autoencoder.load_weights('logs/20210823-221256/weights.1000-0.00630/variables/variables')
     # autoencoder.load_weights('logs/20210825-211156/weights.8570-0.00555/variables/variables')
     # autoencoder.load_weights('logs/20210827-233952/weights.351-0.00284/variables/variables')
+    autoencoder.load_weights('logs/20210829-133633/weights.1799-0.00745/variables/variables')
 
     fps = 10
     upper_limit_hz = 5000

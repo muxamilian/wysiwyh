@@ -110,8 +110,10 @@ class Autoencoder(Model):
       x_reconstructed, code = self(x, training=True)
       reconstruction_loss = loss_function(x, x_reconstructed)
       # You won't believe it but sorting is broken for float32 and only returns 16 sorted values and then 0 from there on
-      reshaped_code = tf.cast(tf.reshape(code, (-1,)), dtype=tf.float64)
-      sorted = tf.cast(tf.sort(reshaped_code), dtype=tf.float32)
+      # reshaped_code = tf.cast(tf.reshape(code, (-1,)), dtype=tf.float64)
+      # sorted = tf.cast(tf.sort(reshaped_code), dtype=tf.float32)
+      reshaped_code = tf.reshape(code, (-1,))
+      sorted = tf.sort(reshaped_code)
       deviation_loss = tf.reduce_mean((sorted-self.cdf)**2.)
       loss = reconstruction_loss + 0.01*deviation_loss
 
