@@ -42,6 +42,7 @@ if __name__=="__main__":
   parser = argparse.ArgumentParser(description="Either train a model, evaluate an existing one on a dataset or run live.")
   parser.add_argument('--mode', type=str, default="train", help='"train" or "live"')
   parser.add_argument('--video_source', type=str, default="0", help='"0" for internal camera or URL or path to video file.')
+  parser.add_argument('--weights', type=str, default="", help='Path to weights of the neural network. For example: "logs/20210829-133633/weights.1799-0.00745/variables/variables"')
 
   args = parser.parse_args()
   print("Got these arguments:", args)
@@ -85,7 +86,7 @@ if __name__=="__main__":
     # autoencoder.load_weights('logs/20210823-221256/weights.1000-0.00630/variables/variables')
     # autoencoder.load_weights('logs/20210825-211156/weights.8570-0.00555/variables/variables')
     # autoencoder.load_weights('logs/20210827-233952/weights.351-0.00284/variables/variables')
-    autoencoder.load_weights('logs/20210829-133633/weights.1799-0.00745/variables/variables')
+    autoencoder.load_weights(args.weights)
 
     fps = 10
     upper_limit_hz = 5000
