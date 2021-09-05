@@ -21,9 +21,9 @@ if __name__=="__main__":
   train = False
 
   # schedule = tf.keras.optimizers.schedules.CosineDecay(1.0, n_steps)
-  optimizer = tf.keras.optimizers.Adam()
+  # optimizer = tf.keras.optimizers.Adam()
   # optimizer = tf.keras.optimizers.SGD(learning_rate=schedule)
-  # optimizer = tf.keras.optimizers.SGD(learning_rate=1)
+  optimizer = tf.keras.optimizers.SGD(learning_rate=1)
 
   autoencoder = Autoencoder(100, 7, batch_size, img_size)
   # autoencoder = Autoencoder(100, 5, batch_size, img_size)
@@ -42,14 +42,15 @@ if __name__=="__main__":
   parser = argparse.ArgumentParser(description="Either train a model, evaluate an existing one on a dataset or run live.")
   parser.add_argument('--mode', type=str, default="train", help='"train" or "live"')
   parser.add_argument('--video_source', type=str, default="0", help='"0" for internal camera or URL or path to video file.')
-  parser.add_argument('--weights', type=str, default="", help='Path to weights of the neural network. For example: "logs/20210829-133633/weights.1799-0.00745/variables/variables"')
+  parser.add_argument('--weights', type=str, default=None, help='Path to weights of the neural network. For example: "logs/20210829-133633/weights.1799-0.00745/variables/variables"')
+  parser.add_argument('--data_dir', type=str, default=None, help='Directory with training data. Only relevant for training.')
 
   args = parser.parse_args()
   print("Got these arguments:", args)
 
   if args.mode=='train':
 
-    x_files = sorted(glob('data5/*.jpg'))
+    x_files = sorted(glob(f'{args.data_dir}/*.jpg'))
     files_ds = tf.data.Dataset.from_tensor_slices(x_files)
     raw_ds = files_ds.map(lambda x: process_img(x, img_size)).cache()
 
@@ -91,6 +92,7 @@ if __name__=="__main__":
     fps = 10
     upper_limit_hz = 5000
     volume = 1
+    _video_file_speed_multiplier = 3
 
     p = pyaudio.PyAudio()
       # for paFloat32 sample values must be in range [-1.0, 1.0]
@@ -107,9 +109,13 @@ if __name__=="__main__":
       is_file = False
     except ValueError:
       pass
-    cap = cv2.VideoCapture(video_source)
 
     print("is_file", is_file)
+
+    cap = cv2.VideoCapture(video_source)
+    if is_file:
+      print("file_fps", round(cap.get(cv2.CAP_PROP_FPS), 2))
+      inter_frame_time = 1/cap.get(cv2.CAP_PROP_FPS)
 
     plotting_queue = multiprocessing.Queue()
 
@@ -118,13 +124,23 @@ if __name__=="__main__":
 
     last_computation_end_time = None
 
-    while cap.isOpened():
-
+    while True:
         start_time = time.time()
-        success, img = cap.read()
 
-        if not success:
-          continue
+        if is_file:
+          accumulated_inter_frame_time = 0
+          while accumulated_inter_frame_time <= 1/fps/_video_file_speed_multiplier:
+            if not cap.isOpened():
+              quit() 
+            success, img = cap.read()
+            if not success:
+              quit()
+
+            accumulated_inter_frame_time += inter_frame_time
+        else:
+          success, img = cap.read()
+          if not success:
+            quit()
 
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 

@@ -18,6 +18,12 @@ class CustomCallback(Callback):
     self.file_writer = file_writer
     self.val_batch = val_batch
 
+  def on_epoch_begin(self, epoch, logs):
+    total_loss_tracker.reset_states()
+    rec_loss_tracker.reset_states()
+    code_loss_tracker.reset_states()
+    rmse_metric.reset_states()
+
   def on_epoch_end(self, epoch, logs=None):
     out_imgs, out_codes = self.model(self.val_batch, training=True)
 
