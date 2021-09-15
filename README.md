@@ -31,12 +31,14 @@ https://user-images.githubusercontent.com/1943719/133305184-45f86eb0-6293-47b7-9
 
 ## Training
 
-    python learn.py --mode train
+For training, there needs to be a directory with training images: 
+
+    python learn.py --mode train --data_dir <path_to_folder_containing_directory_images>
 
 ## Transform video file to audio
 
-    python learn.py --mode live --video_source home3.mov --weights logs/20210829-133633/weights.1799-0.00745/variables/variables
+    python learn.py --mode live --video_source <path_to_video_file> --weights <path_to_output_of_training>/variables/variables
 
 ## Transform video stream to audio
 
-    python learn.py --mode live --video_source 0 --weights logs/20210829-133633/weights.1799-0.00745/variables/variables
+    python learn.py --mode live --video_source 0 --weights <path_to_output_of_training>/variables/variables
