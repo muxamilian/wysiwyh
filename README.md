@@ -33,7 +33,7 @@ https://user-images.githubusercontent.com/1943719/133305184-45f86eb0-6293-47b7-9
 
 For training, there needs to be a directory with training images: 
 
-    python learn.py --mode train --data_dir <path_to_folder_containing_directory_images>
+    python learn.py --mode train --data_dir <path_to_folder_containing_training_images>
 
 ## Transform video file to audio
 
