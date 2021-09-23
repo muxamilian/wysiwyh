@@ -94,13 +94,7 @@ if __name__=="__main__":
     volume = 1
     _video_file_speed_multiplier = 3
 
-    p = pyaudio.PyAudio()
-      # for paFloat32 sample values must be in range [-1.0, 1.0]
-    stream = p.open(format=pyaudio.paFloat32,
-                    frames_per_buffer=int(2*upper_limit_hz/fps),
-                    channels=1,
-                    rate=2*upper_limit_hz,
-                    output=True)
+    buffer_size = int(2*upper_limit_hz/fps)
 
     video_source = args.video_source
     is_file = True
@@ -124,64 +118,71 @@ if __name__=="__main__":
 
     last_computation_end_time = None
 
-    while True:
-        start_time = time.time()
+    def get_frame(in_data, frame_count, time_info, status):
+      global last_computation_end_time
+      global plotting_queue
+      start_time = time.time()
 
-        if is_file:
-          accumulated_inter_frame_time = 0
-          while accumulated_inter_frame_time <= 1/fps/_video_file_speed_multiplier:
-            if not cap.isOpened():
-              quit() 
-            success, img = cap.read()
-            if not success:
-              quit()
-
-            accumulated_inter_frame_time += inter_frame_time
-        else:
+      if is_file:
+        accumulated_inter_frame_time = 0
+        while accumulated_inter_frame_time <= 1/fps/_video_file_speed_multiplier:
+          if not cap.isOpened():
+            quit() 
           success, img = cap.read()
           if not success:
             quit()
 
-        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+          accumulated_inter_frame_time += inter_frame_time
+      else:
+        success, img = cap.read()
+        if not success:
+          quit()
 
-        new_width = int(4/3*img.shape[0])
-        offset = int((img.shape[1]-new_width)/2)
+      img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
-        img = img[:, offset:offset+new_width, :]
-        assert img.shape[1]/img.shape[0]*3 == 4, f'{img.shape}'
+      new_width = int(4/3*img.shape[0])
+      offset = int((img.shape[1]-new_width)/2)
 
-        converted_img = convert_to_tf(img, img_size)
-        predict_ds = converted_img[None,:,:,:]
+      img = img[:, offset:offset+new_width, :]
+      assert img.shape[1]/img.shape[0]*3 == 4, f'{img.shape}'
 
-        output_img, predicted_code = autoencoder(predict_ds, training=True)
+      converted_img = convert_to_tf(img, img_size)
+      predict_ds = converted_img[None,:,:,:]
 
-        current_code = predicted_code[0,:].numpy().astype(np.float64)
-        output_img = output_img[0,...].numpy()
+      output_img, predicted_code = autoencoder(predict_ds, training=True)
 
-        current_code_repeated = current_code.repeat(int(math.floor(upper_limit_hz/current_code.shape[0]/fps)))
-        current_code_filled_up = np.concatenate((np.zeros(1), current_code_repeated))
+      current_code = predicted_code[0,:].numpy().astype(np.float64)
+      output_img = output_img[0,...].numpy()
 
-        time_series = np.fft.irfft(randomize_phase(current_code_filled_up)).astype(np.float32)
-        audio_to_be_played = time_series.tobytes()
+      current_code_repeated = current_code.repeat(int(math.floor(upper_limit_hz/current_code.shape[0]/fps)))
+      current_code_filled_up = np.concatenate((np.zeros(1), current_code_repeated))
 
-        plotting_queue.put((converted_img.numpy(), current_code, output_img))
+      time_series = np.fft.irfft(randomize_phase(current_code_filled_up)).astype(np.float32)
+      assert len(time_series) == buffer_size
+      audio_to_be_played = time_series.tobytes()
 
-        computation_end_time = time.time()
-        last_computation_duration = computation_end_time - start_time
+      plotting_queue.put((converted_img.numpy(), current_code, output_img))
 
-        total_diff = computation_end_time - last_computation_end_time if last_computation_end_time is not None else 0
-        last_computation_end_time = computation_end_time
-        stream.write(audio_to_be_played)
-        writing_time = time.time()-computation_end_time
-        print(f"Fraction of allotted time: {(last_computation_duration)/(1/fps):.3f}, writing time: {writing_time:.3f}, computation time: {last_computation_duration:.3f}, total active time: {writing_time+last_computation_duration:.3f}, total time: {total_diff:.3f}", end="\r")
-        sys.stdout.flush()
-        # time.sleep(max(1/fps - 2*(last_computation_duration+writing_time), 0))
-        # Hope that computation doesn't last longer than half a frame. This supposedly reduces delay. 
-        # time.sleep(max(0.5/fps, 0))
+      computation_end_time = time.time()
+      last_computation_duration = computation_end_time - start_time
 
-    stream.stop_stream()
-    stream.close()
+      total_diff = computation_end_time - last_computation_end_time if last_computation_end_time is not None else 0
+      last_computation_end_time = computation_end_time
+      print(f"Fraction of allotted time: {(last_computation_duration)/(1/fps):.3f}, computation time: {last_computation_duration:.3f}, total active time: {last_computation_duration:.3f}, total time: {total_diff:.3f}", end="\r")
+      sys.stdout.flush()
+      return (audio_to_be_played, pyaudio.paContinue)
 
-    p.terminate()
+    p = pyaudio.PyAudio()
+    # for paFloat32 sample values must be in range [-1.0, 1.0]
+    stream = p.open(format=pyaudio.paFloat32,
+                    frames_per_buffer=buffer_size,
+                    channels=1,
+                    rate=2*upper_limit_hz,
+                    output=True,
+                    stream_callback=get_frame)
 
-    pass
+    print(f"audio latency: {stream.get_output_latency():.2f}")
+
+    stream.start_stream()
+
+    plotting_process.join()
