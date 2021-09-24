@@ -1,4 +1,10 @@
+import collections
+
+
 if __name__=="__main__":
+  from collections import deque
+  import queue
+  import threading
   import numpy as np
   import sys
   from datetime import datetime
@@ -39,10 +45,16 @@ if __name__=="__main__":
 
   # os.makedirs("figures", exist_ok=True)
 
+  # parser = argparse.ArgumentParser(description="Either train a model, evaluate an existing one on a dataset or run live.")
+  # parser.add_argument('--mode', type=str, default="train", help='"train" or "live"')
+  # parser.add_argument('--video_source', type=str, default="0", help='"0" for internal camera or URL or path to video file.')
+  # parser.add_argument('--weights', type=str, default=None, help='Path to weights of the neural network. For example: "logs/20210829-133633/weights.1799-0.00745/variables/variables"')
+  # parser.add_argument('--data_dir', type=str, default=None, help='Directory with training data. Only relevant for training.')
+
   parser = argparse.ArgumentParser(description="Either train a model, evaluate an existing one on a dataset or run live.")
-  parser.add_argument('--mode', type=str, default="train", help='"train" or "live"')
-  parser.add_argument('--video_source', type=str, default="0", help='"0" for internal camera or URL or path to video file.')
-  parser.add_argument('--weights', type=str, default=None, help='Path to weights of the neural network. For example: "logs/20210829-133633/weights.1799-0.00745/variables/variables"')
+  parser.add_argument('--mode', type=str, default="live", help='"train" or "live"')
+  parser.add_argument('--video_source', type=str, default="work.mov", help='"0" for internal camera or URL or path to video file.')
+  parser.add_argument('--weights', type=str, default="logs/20210903-170125/weights.7280-0.00373/variables/variables", help='Path to weights of the neural network. For example: "logs/20210829-133633/weights.1799-0.00745/variables/variables"')
   parser.add_argument('--data_dir', type=str, default=None, help='Directory with training data. Only relevant for training.')
 
   args = parser.parse_args()
@@ -118,7 +130,7 @@ if __name__=="__main__":
 
     last_computation_end_time = None
 
-    def get_frame(in_data, frame_count, time_info, status):
+    def get_frame():
       global last_computation_end_time
       global plotting_queue
       start_time = time.time()
@@ -170,19 +182,49 @@ if __name__=="__main__":
       last_computation_end_time = computation_end_time
       print(f"Fraction of allotted time: {(last_computation_duration)/(1/fps):.3f}, computation time: {last_computation_duration:.3f}, total active time: {last_computation_duration:.3f}, total time: {total_diff:.3f}", end="\r")
       sys.stdout.flush()
-      return (audio_to_be_played, pyaudio.paContinue)
+      return audio_to_be_played
+
+
+    chunks_per_frame = 2
+
+    process_new_frame_queue = queue.Queue()
+    audio_chunk_queue = collections.deque()
+
+    def get_and_enqueue_new_frame():
+      audio_frame = get_frame()
+      for i in range(chunks_per_frame):
+        chunk_len = int(len(audio_frame)/chunks_per_frame)
+        audio_chunk_queue.append(audio_frame[i*chunk_len:(i+1)*chunk_len])
+
+    def produce_new_frame():
+      while True: 
+        process_new_frame_queue.get(block=True, timeout=1)
+        get_and_enqueue_new_frame()
+
+    def cb(in_data, frame_count, time_info, status):
+      if len(audio_chunk_queue) == 0:
+        # Only necessary at the beginning hopefully
+        get_and_enqueue_new_frame()
+      elif len(audio_chunk_queue) == int(chunks_per_frame/2):
+        process_new_frame_queue.put_nowait(True)
+      current_item = audio_chunk_queue.popleft()
+      return (current_item, pyaudio.paContinue)
+        
+    new_frame_thread = threading.Thread(target=produce_new_frame, args=())
+    new_frame_thread.start()
 
     p = pyaudio.PyAudio()
     # for paFloat32 sample values must be in range [-1.0, 1.0]
     stream = p.open(format=pyaudio.paFloat32,
-                    frames_per_buffer=buffer_size,
+                    frames_per_buffer=int(buffer_size/chunks_per_frame),
                     channels=1,
                     rate=2*upper_limit_hz,
                     output=True,
-                    stream_callback=get_frame)
+                    stream_callback=cb)
 
     print(f"audio latency: {stream.get_output_latency():.2f}")
 
     stream.start_stream()
 
     plotting_process.join()
+    quit()
