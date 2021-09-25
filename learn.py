@@ -185,7 +185,7 @@ if __name__=="__main__":
       return audio_to_be_played
 
 
-    chunks_per_frame = 2
+    chunks_per_frame = 10
 
     process_new_frame_queue = queue.Queue()
     audio_chunk_queue = collections.deque()
@@ -205,7 +205,7 @@ if __name__=="__main__":
       if len(audio_chunk_queue) == 0:
         # Only necessary at the beginning hopefully
         get_and_enqueue_new_frame()
-      elif len(audio_chunk_queue) == int(chunks_per_frame/2):
+      elif len(audio_chunk_queue) == int(chunks_per_frame/5):
         process_new_frame_queue.put_nowait(True)
       current_item = audio_chunk_queue.popleft()
       return (current_item, pyaudio.paContinue)
@@ -227,4 +227,3 @@ if __name__=="__main__":
     stream.start_stream()
 
     plotting_process.join()
-    quit()
