@@ -8,7 +8,7 @@ Transform a video to audio in real time
 
 On the top left you see the original video. On the top right the video reconstructed by the autoencoder. On the bottom there's the audio spectrum, which is the output of the encoder. It goes from 0 Hz on the left to 5000 Hz on the right. The unit on the y axis is arbitrary. 
 
-https://user-images.githubusercontent.com/1943719/133305184-45f86eb0-6293-47b7-9e3b-ee0499851242.mp4
+https://user-images.githubusercontent.com/1943719/134782597-b81f7c26-2bee-4264-b7be-38b60a4d8524.mp4
 
 ## Idea
 
