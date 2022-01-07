@@ -2,7 +2,7 @@
 
 ## Goal
 
-Transform a video to audio in real time. This means that you can literally hear what you see. 
+Transform an image to audio in real time. This means that you can literally hear what you see. 
 
 ## Example
 
