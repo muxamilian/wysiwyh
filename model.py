@@ -77,39 +77,48 @@ class Autoencoder(Model):
     self.code_dim = code_dim
     self.smoothing_half_size = smoothing_half_size
 
-    self.smoothing_kernel = tf.constant(get_triangle_distribution(self.smoothing_half_size), dtype=tf.float32)[:,None,None]
+    # self.smoothing_kernel = tf.constant(get_triangle_distribution(self.smoothing_half_size), dtype=tf.float32)[:,None,None]
+    initial_size = 32
 
     self.encoder = tf.keras.Sequential([
       layers.Input(shape=(self.img_size, self.img_size, 3)),
-      layers.Conv2D(8, (4, 4), padding='same', strides=2),
+      layers.Conv2D(initial_size, (4, 4), padding='same', strides=2),
       layers.LeakyReLU(alpha=0.1),
-      layers.Conv2D(16, (4, 4), padding='same', strides=2),
+      layers.Conv2D(initial_size*2, (4, 4), padding='same', strides=2, use_bias=False),
+      layers.BatchNormalization(),
       layers.LeakyReLU(alpha=0.1),
-      layers.Conv2D(32, (4, 4), padding='same', strides=2),
+      layers.Conv2D(initial_size*4, (4, 4), padding='same', strides=2, use_bias=False),
+      layers.BatchNormalization(),
       layers.LeakyReLU(alpha=0.1),
-      layers.Conv2D(64, (4, 4), padding='same', strides=2),
+      layers.Conv2D(initial_size*8, (4, 4), padding='same', strides=2, use_bias=False),
+      layers.BatchNormalization(),
       layers.LeakyReLU(alpha=0.1),
-      layers.Conv2D(128, (4, 4), padding='same', strides=4),
+      layers.Conv2D(initial_size*16, (4, 4), padding='same', strides=4),
       layers.LeakyReLU(alpha=0.1),
       layers.Flatten(),
-      layers.Dense(256),
+      layers.Dense(initial_size*32),
       layers.LeakyReLU(alpha=0.1),
       layers.Dense(self.code_dim+2*self.smoothing_half_size, activation=None),
     ])
 
     self.decoder = tf.keras.Sequential([
-      layers.Dense(256),
+      layers.Dense(initial_size*32),
       layers.LeakyReLU(alpha=0.1),
-      layers.Reshape ((1, 1, 256)),
-      layers.Conv2DTranspose(64, kernel_size=4, strides=4, padding='same'),
+      layers.Reshape ((1, 1, initial_size*32)),
+      layers.Conv2DTranspose(initial_size*8, kernel_size=4, strides=4, padding='same', use_bias=False),
+      layers.BatchNormalization(),
       layers.LeakyReLU(alpha=0.1),
-      layers.Conv2DTranspose(32, kernel_size=4, strides=2, padding='same'),
+      layers.Conv2DTranspose(initial_size*4, kernel_size=4, strides=2, padding='same', use_bias=False),
+      layers.BatchNormalization(),
       layers.LeakyReLU(alpha=0.1),
-      layers.Conv2DTranspose(16, kernel_size=4, strides=2, padding='same'),
+      layers.Conv2DTranspose(initial_size*2, kernel_size=4, strides=2, padding='same', use_bias=False),
+      layers.BatchNormalization(),
       layers.LeakyReLU(alpha=0.1),
-      layers.Conv2DTranspose(8, kernel_size=4, strides=2, padding='same'),
+      layers.Conv2DTranspose(initial_size, kernel_size=4, strides=2, padding='same', use_bias=False),
+      layers.BatchNormalization(),
       layers.LeakyReLU(alpha=0.1),
-      layers.Conv2DTranspose(3, kernel_size=4, strides=2, activation=None, padding='same')])
+      layers.Conv2DTranspose(3, kernel_size=4, strides=2, activation=None, padding='same')
+      ])
 
   def train_step(self, x):
     with tf.GradientTape() as tape:
@@ -119,7 +128,8 @@ class Autoencoder(Model):
       # reshaped_code = tf.cast(tf.reshape(code, (-1,)), dtype=tf.float64)
       # sorted = tf.cast(tf.sort(reshaped_code), dtype=tf.float32)
       reshaped_code = tf.reshape(code, (-1,))
-      sorted = tf.sort(reshaped_code)
+      with tf.device('/cpu:0'):
+        sorted = tf.sort(reshaped_code)
       deviation_loss = tf.reduce_mean((sorted-self.cdf)**2.)
       loss = reconstruction_loss + 0.01*deviation_loss
 
