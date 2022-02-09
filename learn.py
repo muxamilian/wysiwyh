@@ -31,8 +31,9 @@ if __name__=="__main__":
   # optimizer = tf.keras.optimizers.SGD(learning_rate=schedule)
   optimizer = tf.keras.optimizers.SGD(learning_rate=1e-2)
 
-  autoencoder = Autoencoder(100, 7, batch_size, img_size)
+  # autoencoder = Autoencoder(100, 7, batch_size, img_size)
   # autoencoder = Autoencoder(100, 5, batch_size, img_size)
+  autoencoder = Autoencoder(128, batch_size, img_size)
   autoencoder.compile(optimizer=optimizer, run_eagerly=True)
 
   def randomize_phase(absolute_values):

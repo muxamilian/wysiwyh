@@ -1,3 +1,5 @@
+import math
+import random
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras.models import Model
@@ -68,14 +70,13 @@ code_loss_tracker = tf.keras.metrics.Mean(name="code_loss")
 rmse_metric = tf.keras.metrics.RootMeanSquaredError()
 
 class Autoencoder(Model):
-  def __init__(self, code_dim, smoothing_half_size, batch_size, img_size):
+  def __init__(self, code_dim, batch_size, img_size):
     super(Autoencoder, self).__init__()
 
     self.batch_size = batch_size
     self.img_size = img_size
     self.cdf = tf.cast(tf.linspace(0, 1, self.batch_size*code_dim+2)[1:-1], tf.float32)
     self.code_dim = code_dim
-    self.smoothing_half_size = smoothing_half_size
 
     # self.smoothing_kernel = tf.constant(get_triangle_distribution(self.smoothing_half_size), dtype=tf.float32)[:,None,None]
     initial_size = 32
@@ -98,7 +99,8 @@ class Autoencoder(Model):
       layers.Flatten(),
       layers.Dense(initial_size*32),
       layers.LeakyReLU(alpha=0.1),
-      layers.Dense(self.code_dim+2*self.smoothing_half_size, activation=None),
+      # layers.Dense(self.code_dim+2*self.smoothing_half_size, activation=None),
+      layers.Dense(self.code_dim, activation=None),
     ])
 
     self.decoder = tf.keras.Sequential([
@@ -148,11 +150,22 @@ class Autoencoder(Model):
     #     return [total_loss_tracker, rec_loss_tracker, code_loss_metric, rmse_metric]
 
   def call(self, x, training=False):
-    encoded_unsmoothed = self.encoder(x)[:,:,None]
-    
-    smoothed = tf.nn.conv1d(encoded_unsmoothed, self.smoothing_kernel, stride=1, padding="VALID")
-    smoothed = tf.reshape(smoothed, (-1, self.code_dim))
-    encoded = tf.sigmoid(smoothed)
+    # encoded_unsmoothed = self.encoder(x)[:,:,None]
+    # smoothed = tf.nn.conv1d(encoded_unsmoothed, self.smoothing_kernel, stride=1, padding="VALID")
+    # smoothed = tf.reshape(smoothed, (-1, self.code_dim))
+    # encoded = tf.sigmoid(smoothed)
+
+    encoded = self.encoder(x)[:,:,None]
+    bits_in_code = math.log2(len(self.code_dim))
+    assert bits_in_code == round(bits_in_code)
+    bits_in_code = int(bits_in_code)
+    other_dim = int(2**random.randint(0, bits_in_code))
+    encoded = encoded.reshape(-1, other_dim)
+    encoded = tf.reduce_mean(encoded, -1)
+    encoded = encoded.reshape(-1, 1)
+    encoded = tf.tile(encoded, (1, other_dim))
+    encoded = tf.sigmoid(encoded)
+    print('other_dim', other_dim, 'encoded', encoded)
 
     if not training:
       return encoded
