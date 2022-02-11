@@ -29,7 +29,7 @@ if __name__=="__main__":
   # schedule = tf.keras.optimizers.schedules.CosineDecay(1.0, n_steps)
   # optimizer = tf.keras.optimizers.Adam()
   # optimizer = tf.keras.optimizers.SGD(learning_rate=schedule)
-  optimizer = tf.keras.optimizers.SGD(learning_rate=1e-2)
+  optimizer = tf.keras.optimizers.SGD(learning_rate=1e-1)
 
   # autoencoder = Autoencoder(100, 7, batch_size, img_size)
   # autoencoder = Autoencoder(100, 5, batch_size, img_size)
@@ -46,17 +46,17 @@ if __name__=="__main__":
 
   # os.makedirs("figures", exist_ok=True)
 
-  # parser = argparse.ArgumentParser(description="Either train a model, evaluate an existing one on a dataset or run live.")
-  # parser.add_argument('--mode', type=str, default="train", help='"train" or "live"')
-  # parser.add_argument('--video_source', type=str, default="0", help='"0" for internal camera or URL or path to video file.')
-  # parser.add_argument('--weights', type=str, default=None, help='Path to weights of the neural network. For example: "logs/20210829-133633/weights.1799-0.00745/variables/variables"')
-  # parser.add_argument('--data_dir', type=str, default=None, help='Directory with training data. Only relevant for training.')
-
   parser = argparse.ArgumentParser(description="Either train a model, evaluate an existing one on a dataset or run live.")
-  parser.add_argument('--mode', type=str, default="live", help='"train" or "live"')
-  parser.add_argument('--video_source', type=str, default="work.mov", help='"0" for internal camera or URL or path to video file.')
-  parser.add_argument('--weights', type=str, default="logs/20210903-170125/weights.7280-0.00373/variables/variables", help='Path to weights of the neural network. For example: "logs/20210829-133633/weights.1799-0.00745/variables/variables"')
-  parser.add_argument('--data_dir', type=str, default=None, help='Directory with training data. Only relevant for training.')
+  parser.add_argument('--mode', type=str, default="train", help='"train" or "live"')
+  parser.add_argument('--video_source', type=str, default="0", help='"0" for internal camera or URL or path to video file.')
+  parser.add_argument('--weights', type=str, default=None, help='Path to weights of the neural network. For example: "logs/20210829-133633/weights.1799-0.00745/variables/variables"')
+  parser.add_argument('--data_dir', type=str, default='data3', help='Directory with training data. Only relevant for training.')
+
+  # parser = argparse.ArgumentParser(description="Either train a model, evaluate an existing one on a dataset or run live.")
+  # parser.add_argument('--mode', type=str, default="live", help='"train" or "live"')
+  # parser.add_argument('--video_source', type=str, default="work.mov", help='"0" for internal camera or URL or path to video file.')
+  # parser.add_argument('--weights', type=str, default="logs/20210903-170125/weights.7280-0.00373/variables/variables", help='Path to weights of the neural network. For example: "logs/20210829-133633/weights.1799-0.00745/variables/variables"')
+  # parser.add_argument('--data_dir', type=str, default=None, help='Directory with training data. Only relevant for training.')
 
   args = parser.parse_args()
   print("Got these arguments:", args)
@@ -77,7 +77,7 @@ if __name__=="__main__":
     file_writer = tf.summary.create_file_writer(logdir)
 
     with file_writer.as_default():
-      tf.summary.image("In imgs", val_batch, step=0)
+      tf.summary.image("In imgs", val_batch, step=0, max_outputs=8)
 
     epochs_to_train = int(n_steps/batches_per_epoch)
 

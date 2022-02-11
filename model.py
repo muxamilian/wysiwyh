@@ -5,6 +5,7 @@ import tensorflow as tf
 from tensorflow.keras.models import Model
 from tensorflow.keras import layers, losses
 from tensorflow.keras.callbacks import Callback
+import tensorflow_probability as tfp
 
 def create_image_from_distribution(sequence, n_bins=100):
   assert len(sequence.shape) == 1
@@ -19,24 +20,32 @@ class CustomCallback(Callback):
   def __init__(self, file_writer, val_batch):
     self.file_writer = file_writer
     self.val_batch = val_batch
+    self.already_printed = False
+
+  def on_batch_end(self, batch, logs):
+    if not self.already_printed:
+      print(self.model.encoder.summary())
+      print(self.model.decoder.summary())
+      self.already_printed = True
 
   def on_epoch_begin(self, epoch, logs):
+      
     total_loss_tracker.reset_states()
     rec_loss_tracker.reset_states()
     code_loss_tracker.reset_states()
+    corr_loss_tracker.reset_states()
     rmse_metric.reset_states()
 
   def on_epoch_end(self, epoch, logs=None):
-    out_imgs, out_codes = self.model(self.val_batch, training=True)
+    out_imgs, out_codes = self.model(self.val_batch, training=True, eval=True)
+
+    distributions = [create_image_from_distribution(out_codes[i,:].numpy()) for i in range(8)]
 
     with self.file_writer.as_default():
-      tf.summary.image("Out imgs", out_imgs, step=epoch)
+      tf.summary.image("Out imgs", out_imgs, step=epoch, max_outputs=8)
       tf.summary.histogram("Out overall dists", out_codes, step=epoch)
-      stacked_dist_images = np.stack([
-        create_image_from_distribution(out_codes[0,:].numpy()), 
-        create_image_from_distribution(out_codes[1,:].numpy()),
-        create_image_from_distribution(out_codes[2,:].numpy())])
-      tf.summary.image("Out dists", stacked_dist_images, step=epoch)
+      stacked_dist_images = np.stack(distributions)
+      tf.summary.image("Out dists", stacked_dist_images, step=epoch, max_outputs=8)
 
       for key in logs:
         tf.summary.scalar(key, logs[key], step=epoch)
@@ -67,6 +76,7 @@ loss_function = losses.MeanSquaredError()
 total_loss_tracker = tf.keras.metrics.Mean(name="total_loss")
 rec_loss_tracker = tf.keras.metrics.Mean(name="rec_loss")
 code_loss_tracker = tf.keras.metrics.Mean(name="code_loss")
+corr_loss_tracker = tf.keras.metrics.Mean(name="corr_loss")
 rmse_metric = tf.keras.metrics.RootMeanSquaredError()
 
 class Autoencoder(Model):
@@ -97,16 +107,16 @@ class Autoencoder(Model):
       layers.Conv2D(initial_size*16, (4, 4), padding='same', strides=4),
       layers.LeakyReLU(alpha=0.1),
       layers.Flatten(),
-      layers.Dense(initial_size*32),
+      layers.Dense(initial_size*16),
       layers.LeakyReLU(alpha=0.1),
       # layers.Dense(self.code_dim+2*self.smoothing_half_size, activation=None),
       layers.Dense(self.code_dim, activation=None),
-    ])
+    ], name="encoder")
 
     self.decoder = tf.keras.Sequential([
-      layers.Dense(initial_size*32),
+      layers.Dense(initial_size*16),
       layers.LeakyReLU(alpha=0.1),
-      layers.Reshape ((1, 1, initial_size*32)),
+      layers.Reshape((1, 1, initial_size*16)),
       layers.Conv2DTranspose(initial_size*8, kernel_size=4, strides=4, padding='same', use_bias=False),
       layers.BatchNormalization(),
       layers.LeakyReLU(alpha=0.1),
@@ -119,12 +129,12 @@ class Autoencoder(Model):
       layers.Conv2DTranspose(initial_size, kernel_size=4, strides=2, padding='same', use_bias=False),
       layers.BatchNormalization(),
       layers.LeakyReLU(alpha=0.1),
-      layers.Conv2DTranspose(3, kernel_size=4, strides=2, activation=None, padding='same')
-      ])
+      layers.Conv2DTranspose(3, kernel_size=4, strides=2, activation='sigmoid', padding='same')
+      ], name="decoder")
 
   def train_step(self, x):
     with tf.GradientTape() as tape:
-      x_reconstructed, code = self(x, training=True)
+      x_reconstructed, code = self(x, training=True, eval=False)
       reconstruction_loss = loss_function(x, x_reconstructed)
       # You won't believe it but sorting is broken for float32 and only returns 16 sorted values and then 0 from there on
       # reshaped_code = tf.cast(tf.reshape(code, (-1,)), dtype=tf.float64)
@@ -132,8 +142,14 @@ class Autoencoder(Model):
       reshaped_code = tf.reshape(code, (-1,))
       with tf.device('/cpu:0'):
         sorted = tf.sort(reshaped_code)
+
+      brightness_of_each_image = tf.reduce_mean(x, axis=(1,2,3))
+      avg_code = tf.reduce_mean(code, (1,))
+
+      correlation = tfp.stats.correlation(brightness_of_each_image, avg_code, event_axis=None)
+
       deviation_loss = tf.reduce_mean((sorted-self.cdf)**2.)
-      loss = reconstruction_loss + 0.01*deviation_loss
+      loss = reconstruction_loss + 0.01*deviation_loss - 0.01*correlation
 
     gradients = tape.gradient(loss, self.trainable_variables)
     self.optimizer.apply_gradients(zip(gradients, self.trainable_variables))
@@ -142,30 +158,41 @@ class Autoencoder(Model):
     total_loss_tracker.update_state(loss)
     rec_loss_tracker.update_state(reconstruction_loss)
     code_loss_tracker.update_state(deviation_loss)
+    corr_loss_tracker.update_state(correlation)
     rmse_metric.update_state(x, x_reconstructed)
-    return {"total_loss": total_loss_tracker.result(), "rec_loss": rec_loss_tracker.result(), "code_loss": code_loss_tracker.result(), "rmse": rmse_metric.result()}
+    return {"total_loss": total_loss_tracker.result(), "rec_loss": rec_loss_tracker.result(), "code_loss": code_loss_tracker.result(), "corr_loss": corr_loss_tracker.result(), "rmse": rmse_metric.result()}
 
     # @property
     # def metrics(self):
     #     return [total_loss_tracker, rec_loss_tracker, code_loss_metric, rmse_metric]
 
-  def call(self, x, training=False):
+  def call(self, x, training=False, eval=True):
     # encoded_unsmoothed = self.encoder(x)[:,:,None]
     # smoothed = tf.nn.conv1d(encoded_unsmoothed, self.smoothing_kernel, stride=1, padding="VALID")
     # smoothed = tf.reshape(smoothed, (-1, self.code_dim))
     # encoded = tf.sigmoid(smoothed)
 
     encoded = self.encoder(x)[:,:,None]
-    bits_in_code = math.log2(len(self.code_dim))
-    assert bits_in_code == round(bits_in_code)
-    bits_in_code = int(bits_in_code)
-    other_dim = int(2**random.randint(0, bits_in_code))
-    encoded = encoded.reshape(-1, other_dim)
-    encoded = tf.reduce_mean(encoded, -1)
-    encoded = encoded.reshape(-1, 1)
-    encoded = tf.tile(encoded, (1, other_dim))
+
+    if training and not eval:
+      bits_in_code = math.log2(self.code_dim)
+      assert bits_in_code == round(bits_in_code)
+      bits_in_code = int(bits_in_code)
+      encoded_list = tf.unstack(encoded)
+      new_encoded = []
+      for item in encoded_list:
+        other_dim = int(2**random.randint(0, bits_in_code))
+        item = tf.reshape(item, (-1, other_dim))
+        item = tf.reduce_mean(item, -1)
+        item = tf.reshape(item, (-1, 1))
+        item = tf.tile(item, (1, other_dim))
+        item = tf.reshape(item, (self.code_dim,))
+        new_encoded.append(item)
+      encoded = tf.stack(new_encoded)
+
+    encoded = tf.reshape(encoded, (-1, self.code_dim))
     encoded = tf.sigmoid(encoded)
-    print('other_dim', other_dim, 'encoded', encoded)
+    # print('other_dim', other_dim, 'encoded', encoded[-1,...].numpy().tolist())
 
     if not training:
       return encoded
