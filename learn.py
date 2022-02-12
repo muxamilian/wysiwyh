@@ -29,6 +29,7 @@ if __name__=="__main__":
   # schedule = tf.keras.optimizers.schedules.CosineDecay(1.0, n_steps)
   # optimizer = tf.keras.optimizers.Adam()
   # optimizer = tf.keras.optimizers.SGD(learning_rate=schedule)
+  # optimizer = tf.keras.optimizers.SGD(learning_rate=1e-1)
   optimizer = tf.keras.optimizers.SGD(learning_rate=1e-1)
 
   # autoencoder = Autoencoder(100, 7, batch_size, img_size)
