@@ -11,7 +11,7 @@ def create_image_from_distribution(sequence, n_bins=100):
   assert len(sequence.shape) == 1
   output_image = np.zeros((n_bins, sequence.shape[-1], 3), dtype=np.float32)
   for i in range(len(sequence)):
-    output_image[:int(np.floor(n_bins*sequence[i])), i, :] = 1.0
+    output_image[n_bins-1-int(np.round(n_bins*sequence[i])):, i, :] = 1.0
 
   return output_image
 
@@ -38,7 +38,6 @@ class CustomCallback(Callback):
 
   def on_epoch_end(self, epoch, logs=None):
     for i in range(self.model.bits_in_code+1):
-
       out_imgs, out_codes = self.model(self.val_batch, training=True, eval=True, level=i)
 
       distributions = [create_image_from_distribution(out_codes[i,:].numpy()) for i in range(8)]
