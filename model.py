@@ -29,7 +29,7 @@ class CustomCallback(Callback):
       self.already_printed = True
 
   def on_epoch_begin(self, epoch, logs):
-      
+
     total_loss_tracker.reset_states()
     rec_loss_tracker.reset_states()
     code_loss_tracker.reset_states()
@@ -37,18 +37,21 @@ class CustomCallback(Callback):
     rmse_metric.reset_states()
 
   def on_epoch_end(self, epoch, logs=None):
-    out_imgs, out_codes = self.model(self.val_batch, training=True, eval=True)
+    for i in range(self.model.bits_in_code+1):
 
-    distributions = [create_image_from_distribution(out_codes[i,:].numpy()) for i in range(8)]
+      out_imgs, out_codes = self.model(self.val_batch, training=True, eval=True, level=i)
 
-    with self.file_writer.as_default():
-      tf.summary.image("Out imgs", out_imgs, step=epoch, max_outputs=8)
-      tf.summary.histogram("Out overall dists", out_codes, step=epoch)
-      stacked_dist_images = np.stack(distributions)
-      tf.summary.image("Out dists", stacked_dist_images, step=epoch, max_outputs=8)
+      distributions = [create_image_from_distribution(out_codes[i,:].numpy()) for i in range(8)]
+      tag = f' {i}'
 
-      for key in logs:
-        tf.summary.scalar(key, logs[key], step=epoch)
+      with self.file_writer.as_default():
+        tf.summary.image("Out imgs"+tag, out_imgs, step=epoch, max_outputs=8)
+        tf.summary.histogram("Out overall dists"+tag, out_codes, step=epoch)
+        stacked_dist_images = np.stack(distributions)
+        tf.summary.image("Out dists"+tag, stacked_dist_images, step=epoch, max_outputs=8)
+
+        for key in logs:
+          tf.summary.scalar(key, logs[key], step=epoch)
 
 def convert_to_tf(img, img_size):
   img = tf.image.convert_image_dtype(img, tf.float32)
@@ -87,6 +90,10 @@ class Autoencoder(Model):
     self.img_size = img_size
     self.cdf = tf.cast(tf.linspace(0, 1, self.batch_size*code_dim+2)[1:-1], tf.float32)
     self.code_dim = code_dim
+
+    bits_in_code = math.log2(self.code_dim)
+    assert bits_in_code == round(bits_in_code)
+    self.bits_in_code = int(bits_in_code)
 
     # self.smoothing_kernel = tf.constant(get_triangle_distribution(self.smoothing_half_size), dtype=tf.float32)[:,None,None]
     initial_size = 32
@@ -162,40 +169,35 @@ class Autoencoder(Model):
     rmse_metric.update_state(x, x_reconstructed)
     return {"total_loss": total_loss_tracker.result(), "rec_loss": rec_loss_tracker.result(), "code_loss": code_loss_tracker.result(), "corr_loss": corr_loss_tracker.result(), "rmse": rmse_metric.result()}
 
-    # @property
-    # def metrics(self):
-    #     return [total_loss_tracker, rec_loss_tracker, code_loss_metric, rmse_metric]
+  def call(self, x, training=False, eval=True, level=-1):
 
-  def call(self, x, training=False, eval=True):
-    # encoded_unsmoothed = self.encoder(x)[:,:,None]
-    # smoothed = tf.nn.conv1d(encoded_unsmoothed, self.smoothing_kernel, stride=1, padding="VALID")
-    # smoothed = tf.reshape(smoothed, (-1, self.code_dim))
-    # encoded = tf.sigmoid(smoothed)
+    encoded = self.encoder(x, training=training and not eval)[:,:,None]
 
-    encoded = self.encoder(x)[:,:,None]
-
-    if training and not eval:
-      bits_in_code = math.log2(self.code_dim)
-      assert bits_in_code == round(bits_in_code)
-      bits_in_code = int(bits_in_code)
+    if training and not eval or level != -1:
       encoded_list = tf.unstack(encoded)
       new_encoded = []
       for item in encoded_list:
-        other_dim = int(2**random.randint(0, bits_in_code))
-        item = tf.reshape(item, (-1, other_dim))
-        item = tf.reduce_mean(item, -1)
-        item = tf.reshape(item, (-1, 1))
-        item = tf.tile(item, (1, other_dim))
-        item = tf.reshape(item, (self.code_dim,))
+        level_to_use = random.randint(0, self.bits_in_code) if level == -1 else level
+        other_dim = int(2**level_to_use)
+
+        item = split_at_level(item, other_dim)
         new_encoded.append(item)
       encoded = tf.stack(new_encoded)
 
     encoded = tf.reshape(encoded, (-1, self.code_dim))
     encoded = tf.sigmoid(encoded)
-    # print('other_dim', other_dim, 'encoded', encoded[-1,...].numpy().tolist())
 
     if not training:
       return encoded
 
-    decoded = self.decoder(encoded)
+    decoded = self.decoder(encoded, training=training and not eval)
     return decoded, encoded
+
+def split_at_level(item, level):
+  code_dim = item.shape[0]
+  item = tf.reshape(item, (-1, level))
+  item = tf.reduce_mean(item, -1)
+  item = tf.reshape(item, (-1, 1))
+  item = tf.tile(item, (1, level))
+  item = tf.reshape(item, (code_dim,))
+  return item

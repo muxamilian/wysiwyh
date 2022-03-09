@@ -28,6 +28,7 @@ def plotting_function(q):
     code = elem[1]
     if first_time:
       fig, axs = plt.subplots(ncols=2,nrows=2)
+      fig.set_facecolor("black")
       gs = axs[1, 0].get_gridspec()
       # remove the underlying axes
       for ax in axs[1, :]:
@@ -43,13 +44,12 @@ def plotting_function(q):
       ax_out.axis('off')
       ax_out.set_adjustable('datalim')
       im_out = ax_out.imshow(out_img)
-      code_ax.axis('off')
-      code_ax.plot(code)
       first_time = False
     else:
       im.set_data(img)
       im_out.set_data(out_img)
-      code_ax.clear()
-      code_ax.axis('off')
-      code_ax.plot(code)
-      plt.pause(0.01)
+    code_ax.clear()
+    # code_ax.axis('off')
+    code_ax.set_facecolor("black")
+    code_ax.bar(x=range(len(code)), height=code, color='white', edgecolor='white')
+    plt.pause(0.01)

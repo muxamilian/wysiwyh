@@ -1,8 +1,5 @@
-import collections
-
-
 if __name__=="__main__":
-  from collections import deque
+  import collections
   import queue
   import threading
   import numpy as np
@@ -23,7 +20,7 @@ if __name__=="__main__":
 
   img_size = 64
   batch_size = 64
-  n_steps = 500000
+  n_steps = 100000
   train = False
 
   # schedule = tf.keras.optimizers.schedules.CosineDecay(1.0, n_steps)
@@ -47,20 +44,21 @@ if __name__=="__main__":
 
   # os.makedirs("figures", exist_ok=True)
 
-  parser = argparse.ArgumentParser(description="Either train a model, evaluate an existing one on a dataset or run live.")
-  parser.add_argument('--mode', type=str, default="train", help='"train" or "live"')
-  parser.add_argument('--video_source', type=str, default="0", help='"0" for internal camera or URL or path to video file.')
-  parser.add_argument('--weights', type=str, default=None, help='Path to weights of the neural network. For example: "logs/20210829-133633/weights.1799-0.00745/variables/variables"')
-  parser.add_argument('--data_dir', type=str, default='data3', help='Directory with training data. Only relevant for training.')
-
   # parser = argparse.ArgumentParser(description="Either train a model, evaluate an existing one on a dataset or run live.")
-  # parser.add_argument('--mode', type=str, default="live", help='"train" or "live"')
-  # parser.add_argument('--video_source', type=str, default="work.mov", help='"0" for internal camera or URL or path to video file.')
-  # parser.add_argument('--weights', type=str, default="logs/20210903-170125/weights.7280-0.00373/variables/variables", help='Path to weights of the neural network. For example: "logs/20210829-133633/weights.1799-0.00745/variables/variables"')
-  # parser.add_argument('--data_dir', type=str, default=None, help='Directory with training data. Only relevant for training.')
+  # parser.add_argument('--mode', type=str, default="train", help='"train" or "live"')
+  # parser.add_argument('--video_source', type=str, default="0", help='"0" for internal camera or URL or path to video file.')
+  # parser.add_argument('--weights', type=str, default=None, help='Path to weights of the neural network. For example: "logs/20210829-133633/weights.1799-0.00745/variables/variables"')
+  # parser.add_argument('--data_dir', type=str, default='data3', help='Directory with training data. Only relevant for training.')
+
+  parser = argparse.ArgumentParser(description="Either train a model, evaluate an existing one on a dataset or run live.")
+  parser.add_argument('--mode', type=str, default="live", help='"train" or "live"')
+  parser.add_argument('--video_source', type=str, default="work.mov", help='"0" for internal camera or URL or path to video file.')
+  parser.add_argument('--weights', type=str, default='logs/20220211-174349/weights.3971-0.00510/variables/variables')
+  parser.add_argument('--data_dir', type=str, default=None, help='Directory with training data. Only relevant for training.')
 
   args = parser.parse_args()
   print("Got these arguments:", args)
+  autoencoder.load_weights(args.weights)
 
   if args.mode=='train':
 
@@ -93,20 +91,11 @@ if __name__=="__main__":
                     shuffle=False)
 
   elif args.mode=="live":
-    # Apparently the GPU is slower when the batch size is only 1
-    tf.config.experimental.set_visible_devices([], 'GPU')
-
-    # autoencoder.load_weights('logs/20210818-181200/weights.1000-0.00864/variables/variables')
-    # autoencoder.load_weights('logs/20210820-215243/weights.1000-0.00876/variables/variables')
-    # autoencoder.load_weights('logs/20210823-221256/weights.1000-0.00630/variables/variables')
-    # autoencoder.load_weights('logs/20210825-211156/weights.8570-0.00555/variables/variables')
-    # autoencoder.load_weights('logs/20210827-233952/weights.351-0.00284/variables/variables')
-    autoencoder.load_weights(args.weights)
 
     fps = 10
     upper_limit_hz = 5000
     volume = 1
-    _video_file_speed_multiplier = 3
+    _video_file_speed_multiplier = 5
 
     buffer_size = int(2*upper_limit_hz/fps)
 
@@ -163,12 +152,23 @@ if __name__=="__main__":
       converted_img = convert_to_tf(img, img_size)
       predict_ds = converted_img[None,:,:,:]
 
-      output_img, predicted_code = autoencoder(predict_ds, training=True)
+      output_img, predicted_code = autoencoder(predict_ds, training=True, eval=True)
 
       current_code = predicted_code[0,:].numpy().astype(np.float64)
       output_img = output_img[0,...].numpy()
 
-      current_code_repeated = current_code.repeat(int(math.floor(upper_limit_hz/current_code.shape[0]/fps)))
+      new_size = int(upper_limit_hz/fps)
+      current_code_repeated = []
+      items_per_element = new_size/current_code.shape[0]
+      limits = (np.arange(current_code.shape[0])+1) * items_per_element
+
+      current_item = 0
+      s = time.time()
+      for i in range(new_size):
+        current_code_repeated.append(current_code[current_item])
+        if i > limits[current_item]:
+          current_item += 1
+      
       current_code_filled_up = np.concatenate((np.zeros(1), current_code_repeated))
 
       time_series = np.fft.irfft(randomize_phase(current_code_filled_up)).astype(np.float32)
@@ -185,7 +185,6 @@ if __name__=="__main__":
       print(f"Fraction of allotted time: {(last_computation_duration)/(1/fps):.3f}, computation time: {last_computation_duration:.3f}, total active time: {last_computation_duration:.3f}, total time: {total_diff:.3f}", end="\r")
       sys.stdout.flush()
       return audio_to_be_played
-
 
     chunks_per_frame = 10
 
@@ -207,7 +206,7 @@ if __name__=="__main__":
       if len(audio_chunk_queue) == 0:
         # Only necessary at the beginning hopefully
         get_and_enqueue_new_frame()
-      elif len(audio_chunk_queue) == int(chunks_per_frame/5):
+      elif len(audio_chunk_queue) == int(chunks_per_frame/2):
         process_new_frame_queue.put_nowait(True)
       current_item = audio_chunk_queue.popleft()
       return (current_item, pyaudio.paContinue)
