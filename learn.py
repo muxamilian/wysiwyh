@@ -95,7 +95,7 @@ if __name__=="__main__":
     fps = 10
     upper_limit_hz = 5000
     volume = 1
-    _video_file_speed_multiplier = 5
+    _video_file_speed_multiplier = 1
 
     buffer_size = int(2*upper_limit_hz/fps)
 
@@ -112,7 +112,8 @@ if __name__=="__main__":
     cap = cv2.VideoCapture(video_source)
     if is_file:
       print("file_fps", round(cap.get(cv2.CAP_PROP_FPS), 2))
-      inter_frame_time = 1/cap.get(cv2.CAP_PROP_FPS)
+      # inter_frame_time = 1/cap.get(cv2.CAP_PROP_FPS)
+      inter_frame_time = 1/fps
 
     plotting_queue = multiprocessing.Queue()
 
@@ -146,7 +147,8 @@ if __name__=="__main__":
       new_width = int(4/3*img.shape[0])
       offset = int((img.shape[1]-new_width)/2)
 
-      img = img[:, offset:offset+new_width, :]
+      if img.shape[1]/img.shape[0]*3 != 4:
+        img = img[:, offset:offset+new_width, :]
       assert img.shape[1]/img.shape[0]*3 == 4, f'{img.shape}'
 
       converted_img = convert_to_tf(img, img_size)
@@ -175,7 +177,8 @@ if __name__=="__main__":
       assert len(time_series) == buffer_size
       audio_to_be_played = time_series.tobytes()
 
-      plotting_queue.put((converted_img.numpy(), current_code, output_img))
+      # plotting_queue.put((converted_img.numpy(), current_code, output_img))
+      plotting_queue.put((img, current_code, output_img))
 
       computation_end_time = time.time()
       last_computation_duration = computation_end_time - start_time
@@ -202,12 +205,18 @@ if __name__=="__main__":
         process_new_frame_queue.get(block=True, timeout=1)
         get_and_enqueue_new_frame()
 
+    n_callback_called = 0
     def cb(in_data, frame_count, time_info, status):
+      global n_callback_called
       if len(audio_chunk_queue) == 0:
         # Only necessary at the beginning hopefully
+        if n_callback_called != 0:
+          print('Underflow of audio queue occurred!')
         get_and_enqueue_new_frame()
-      elif len(audio_chunk_queue) == int(chunks_per_frame/2):
+      # elif len(audio_chunk_queue) == int(chunks_per_frame/2):
+      elif len(audio_chunk_queue) == chunks_per_frame-1:
         process_new_frame_queue.put_nowait(True)
+        n_callback_called += 1
       current_item = audio_chunk_queue.popleft()
       return (current_item, pyaudio.paContinue)
         

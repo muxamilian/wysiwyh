@@ -54,7 +54,7 @@ class CustomCallback(Callback):
 
 def convert_to_tf(img, img_size):
   img = tf.image.convert_image_dtype(img, tf.float32)
-  img = tf.image.resize(img, size=(img_size, img_size))
+  img = tf.image.resize(img, size=(img_size, img_size), method=tf.image.ResizeMethod.AREA)
   return img
 
 def process_img(file_path, img_size):

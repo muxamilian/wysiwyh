@@ -1,6 +1,7 @@
 import numpy as np
 import queue
 import matplotlib.pyplot as plt
+import cv2
 
 def plotting_function(q):
 
@@ -24,7 +25,7 @@ def plotting_function(q):
         quit()
 
     img = elem[0]
-    out_img = np.clip(elem[2], 0, 1)
+    out_img = cv2.resize(np.clip(elem[2], 0, 1), list(reversed(img.shape[:-1])))
     code = elem[1]
     if first_time:
       fig, axs = plt.subplots(ncols=2,nrows=2)
