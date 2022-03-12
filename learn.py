@@ -129,7 +129,7 @@ if __name__=="__main__":
 
       if is_file:
         accumulated_inter_frame_time = 0
-        while accumulated_inter_frame_time <= 1/fps/_video_file_speed_multiplier:
+        while accumulated_inter_frame_time < 1/fps/_video_file_speed_multiplier:
           if not cap.isOpened():
             quit() 
           success, img = cap.read()
