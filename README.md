@@ -8,7 +8,7 @@ Transform an image to audio in real time. This means that you can literally **he
 
 On the top left you see the original video. On the bottom there's the audio spectrum, which is the output of the *recursively structured* encoder.  On the top right the video reconstructed by the decoder using the audio spectrum of the encoder. The audio spectrum goes from 1 Hz on the left to 5000 Hz on the right. The unit on the y axis is arbitrary. 
 
-https://user-images.githubusercontent.com/1943719/158254163-cfcd221f-61d0-4bcb-b457-a72bd6385060.mp4
+https://user-images.githubusercontent.com/1943719/158484295-a07674c1-1d16-4552-96d9-8b39559aa0e4.mp4
 
 ## Idea
 
