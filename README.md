@@ -39,9 +39,9 @@ If a regular autoencoder is trained, the code of the encoder is, for example, a 
 To achieve this, I propose the **recursively structured encoder**. The concept is the following: During training, parts of the code, which is output by the encoder, are randomly averaged. This is done by randomly choosing a level of averaging. As can be seen in the following example images, the code is averaged up to a certain level. In the most extreme case, the whole code is averaged. Then the only information the decoder has is one real number. One level less extreme is when the lower half of the code is average and the upper half is averaged. The code then consists of two real numbers. Even less extreme is when the code is averaged in four groups, eight groups, sixtreen groups etc. or not averaged at all. 
 
 #### Level example 1
-![levels 1 drawio-2](https://user-images.githubusercontent.com/1943719/158268882-61c9d283-ebae-4d24-9037-a687f43abcf5.svg)
+![levels 1 drawio-3](https://user-images.githubusercontent.com/1943719/158484909-0338dbc5-c6bb-4cac-8385-82343a5def40.png)
 #### Level example 2
-![levels 2 drawio-2](https://user-images.githubusercontent.com/1943719/158268896-6f7f3dfa-bbfb-4f27-9c67-88dd82373f25.svg)
+![levels 2 drawio-3](https://user-images.githubusercontent.com/1943719/158484939-346f98e4-8770-4436-b66b-0c8fec4b3857.png)
 
 This averaging of the code leads to the decoder getting less information than intended by the decoder. For example, if the 1st element of the vector has value 10 and the 2nd one value 60, it could happen that these two values are averaged and the decoder gets the 1st element as the average 35 and the 2nd element also as the average 35. This would mean that if the 1st and 2nd component cannot represent individual information, only their average matters, if they are randomly averaged. This results in the encoder realizing than it doesn't make sense to use adjacent elements of the vector to encode very important information since it could be averaged away. Thus, it will learn to encode the most important information in a way, that it is still preserved even when it is averaged. For example, it could learn to encode important information as the difference between the lower and the upper half of the code since the likelihood of them being averaged is small. 
 
