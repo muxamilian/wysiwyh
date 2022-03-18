@@ -150,6 +150,8 @@ if __name__=="__main__":
       if img.shape[1]/img.shape[0]*3 != 4:
         img = img[:, offset:offset+new_width, :]
       assert img.shape[1]/img.shape[0]*3 == 4, f'{img.shape}'
+      if img.shape[1] > 320:
+        img = cv2.resize(img, (320, 240))
 
       converted_img = convert_to_tf(img, img_size)
       predict_ds = converted_img[None,:,:,:]
