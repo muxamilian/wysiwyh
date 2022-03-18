@@ -68,6 +68,8 @@ To generate the training images, you can use ffmpeg. It is optional to crop the 
 ## Transform video file to audio
 
     python learn.py --mode live --video_source <path_to_video_file> --weights <path_to_output_of_training>/variables/variables
+    
+You can, for example, use the video demo.mp4 that is included in the repository. 
 
 ## Transform video stream to audio
 
