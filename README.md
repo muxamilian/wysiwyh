@@ -6,7 +6,7 @@ Transform an image to audio in real time. This means that you can literally **he
 
 ## Example (recommended with audio turned on)
 
-On the top left you see the original video. On the bottom there's the audio spectrum, which is the output of the *recursively structuring* encoder.  The audio spectrum goes from 1 Hz on the left to 5000 Hz on the right. The unit on the y axis is arbitrary. On the top right is the video reconstructed by the decoder using the audio spectrum of the encoder. 
+On the top left you see the original video. On the bottom there's the audio spectrum, which is the output of the *recursively structuring* encoder.  The audio spectrum goes from 1 Hz on the left to 5000 Hz on the right. The unit on the y axis is the power of each frequency in arbitrary units. On the top right is the video reconstructed by the decoder using the audio spectrum of the encoder. 
 
 https://user-images.githubusercontent.com/1943719/158484295-a07674c1-1d16-4552-96d9-8b39559aa0e4.mp4
 
@@ -25,7 +25,7 @@ https://user-images.githubusercontent.com/1943719/158484295-a07674c1-1d16-4552-9
 ## Specifics
 
 - An *autoencoder* is trained: Its input are images. It consists of two parts: the *encoder* and the *decoder*. The encoder compresses the input image into a small code vector. The code vector is then fed into the decoder which tries to reconstruct the input using the code. Ideally, the whole autoencoder learns to efficiently transform the input image to a good code vector.
-- The code, which is the compression of the image which the autoencoder learns, can be interpreted as a frequency spectrum and thus played back as audio. This frequency spectrum is specifies how loud each frequency is (magnitude).
+- The code, which is the compression of the image which the autoencoder learns, can be interpreted as a frequency spectrum and thus played back as audio. This frequency spectrum specifies how loud each frequency is (magnitude).
 - The frequency spectrum has to be transformed from the frequency domain to the time domain so that it can be played back. For this, in addition to the magnitude of the frequency spectrum, phase information is needed for each frequency in the spectrogram. After some experiments the best solution I found was to use a different random phase for each frequency. 
 
 <p align="center">
@@ -61,7 +61,7 @@ For training, there needs to be a directory with training images:
 
     python learn.py --mode train --data_dir <path_to_training_image_folder>
     
-To generate the training images, you can use ffmpeg. It is optional to crop the images. However, I personally prefer 4:3 over 16:9 as the input.
+To generate the training images, you can use ffmpeg. It is optional to crop the images. However, I personally prefer 4:3 over 16:9 as the input. In the following example, the input video is in 1920x1080 and cropped to be 4:3.  
 
     ffmpeg -i <path_to_video_file> -filter:v "crop=1440:1080:240:0" <path_to_training_image_folder>/image%06d.jpg -hide_banner
 
