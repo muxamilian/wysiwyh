@@ -74,3 +74,9 @@ You can, for example, use the video demo.mp4 that is included in the repository.
 ## Transform video stream to audio
 
     python learn.py --mode live --video_source 0 --weights <path_to_output_of_training>/variables/variables
+
+## Citation
+
+If you wish to cite this research you can do it like this: 
+
+[*"What you see is what you hear", Maximilian Bachl, 2022*](https://scholar.google.at/citations?view_op=view_citation&hl=en&user=llysaaMAAAAJ&citation_for_view=llysaaMAAAAJ:8k81kl-MbHgC)
